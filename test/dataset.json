@@ -1,0 +1,36 @@
+{
+  "nodes": [
+    { "id": 1, "label": "Business Capability A", "businessCapability": "Business Capability A" },
+    { "id": 2, "label": "Business Capability B", "businessCapability": "Business Capability B" },
+    { "id": 3, "label": "Application A", "businessCapability": "Business Capability A" },
+    { "id": 4, "label": "Application AA", "businessCapability": "Business Capability A" },
+    { "id": 5, "label": "Application AB", "businessCapability": "Business Capability A" },
+    { "id": 6, "label": "Application AC", "businessCapability": "Business Capability A" },
+    { "id": 7, "label": "Application ACA", "businessCapability": "Business Capability A" },
+    { "id": 8, "label": "Application ACB", "businessCapability": "Business Capability A" },
+    { "id": 9, "label": "Application B", "businessCapability": "Business Capability A" },
+    { "id": 10, "label": "Application BA", "businessCapability": "Business Capability A" },
+    { "id": 11, "label": "Application BB", "businessCapability": "Business Capability A" },
+    { "id": 12, "label": "Application BAA", "businessCapability": "Business Capability A" },
+    { "id": 13, "label": "Application BAB", "businessCapability": "Business Capability A" },
+    { "id": 14, "label": "Application BABA", "businessCapability": "Business Capability A" },
+    { "id": 16, "label": "Application C", "businessCapability": "Business Capability B" },
+    { "id": 17, "label": "Application D", "businessCapability": "Business Capability B" }
+  ],
+  "edges": [
+    {"from": 1, "to": 3},
+    {"from": 1, "to": 9},
+    {"from": 2, "to": 16},
+    {"from": 2, "to": 17},
+    {"from": 3, "to": 4},
+    {"from": 3, "to": 5},
+    {"from": 3, "to": 6},
+    {"from": 6, "to": 7},
+    {"from": 6, "to": 8},
+    {"from": 9, "to": 10},
+    {"from": 9, "to": 11},
+    {"from": 10, "to": 12},
+    {"from": 10, "to": 13},
+    {"from": 13, "to": 14}
+  ]
+}

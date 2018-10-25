@@ -1,6 +1,6 @@
 {
   "name": "leanix-report-successor-predecessor",
-  "version": "1.0.0",
+  "version": "1.0.0-beta.1",
   "description": "LeanIX custom report build with Vue.js.",
   "author": "Paulo dos Santos",
   "private": true,
@@ -9,13 +9,16 @@
     "start": "npm run dev",
     "lint": "eslint --ext .js,.vue src",
     "build": "node build/build.js",
-    "upload": "cross-env UPLOAD_TO_LEANIX=true npm run build"
+    "upload": "cross-env UPLOAD_TO_LEANIX=true npm run build",
+    "setupDevWorkspace": "./node_modules/.bin/mocha test/setupDevWorkspace.js --require babel-register --timeout 999999 --colors"
   },
   "dependencies": {
     "@leanix/reporting": "^0.2.2",
+    "vis": "^4.21.0",
     "vue": "^2.5.2"
   },
   "devDependencies": {
+    "@babel/polyfill": "^7.0.0",
     "autoprefixer": "^7.1.2",
     "babel-core": "^6.22.1",
     "babel-eslint": "^7.2.3",
@@ -25,7 +28,10 @@
     "babel-plugin-transform-runtime": "^6.22.0",
     "babel-plugin-transform-vue-jsx": "^3.5.0",
     "babel-preset-env": "^1.3.2",
+    "babel-preset-es2015": "^6.24.1",
     "babel-preset-stage-2": "^6.22.0",
+    "babel-register": "^6.26.0",
+    "chai": "^4.2.0",
     "chalk": "^2.0.1",
     "copy-webpack-plugin": "^4.0.1",
     "cross-env": "^5.0.1",
@@ -44,6 +50,8 @@
     "friendly-errors-webpack-plugin": "^1.6.1",
     "html-webpack-plugin": "^2.30.1",
     "jwt-decode": "^2.2.0",
+    "leanix-js": "^0.2.1",
+    "mocha": "^5.2.0",
     "node-notifier": "^5.2.1",
     "optimize-css-assets-webpack-plugin": "^3.2.0",
     "ora": "^1.2.0",
