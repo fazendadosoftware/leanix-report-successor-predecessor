@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@leanix/reporting": "^0.2.2",
+    "npm": "^6.4.1",
+    "svg.js": "^2.6.6",
     "vis": "^4.21.0",
     "vue": "^2.5.2"
   },
@@ -33,6 +35,7 @@
     "babel-register": "^6.26.0",
     "chai": "^4.2.0",
     "chalk": "^2.0.1",
+    "chance": "^1.0.16",
     "copy-webpack-plugin": "^4.0.1",
     "cross-env": "^5.0.1",
     "css-loader": "^0.28.0",

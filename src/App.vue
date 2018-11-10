@@ -1,12 +1,13 @@
 <template>
   <div id="app">
+    <div id="drawing"/>
     <img class="logo" src="./assets/logo.svg">
     <div class="actions-container">
       <button @click="expandAll">Expand All</button>
       <button @click="clusterByBusinessCapabilities">Cluster By Business Capability</button>
     </div>
     <div class="hover-container" v-if="hoveredNode">
-      Further information for {{hoveredNode.label || hoveredNode}} shown here...
+      Further information for {{hoveredNode.title || hoveredNode}} shown here...
     </div>
     <div class="chart-container" ref="chart"/>
   </div>
@@ -14,9 +15,62 @@
 
 <script>
 import { DataSet, Network } from 'vis'
+import SVG from 'svg.js'
 import 'vis/dist/vis-network.min.css'
+const chance = require('chance').Chance()
+
 const dataset = require('../test/dataset.json')
 
+const getNodeShape = node => { /* eslint-disable */
+  const { title } = node
+  const grey800 = '#9e9e9e'
+
+  const canvasDims = [320, 140]
+  const borderWidth = 3
+  const padding = 20
+  const containerDims = canvasDims.map(dim => dim - 2 * borderWidth)
+
+  const canvas = SVG('drawing').size(...canvasDims)
+  const defs = canvas.defs()
+
+  const container = canvas.rect(...containerDims)
+    .move(borderWidth, borderWidth)
+    .stroke({ width: borderWidth, color: '#424242' })
+    .radius(10)
+    .attr({ fill: 'white' })
+
+  const text = canvas.text(title || '')
+    .font({ family: 'Helvetica', size: 35, anchor: 'start' })
+    .x(padding)
+    .attr({ 'letter-spacing': '2px' })
+
+  const tags = Array.from(Array(4).keys())
+    .map(n => {
+      return canvas
+        // .circle(40)
+        .rect(40, 30)
+        .radius(5)
+        .y(80)
+        .x(50 * n + padding)
+        .fill(chance.color({format: 'hex'}))
+    })
+
+  const element = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(canvas.svg())}`
+  canvas.remove()
+  return element
+
+  /*
+  const shape = svg.newInstance().width(300).height(110)
+    .rect({ id: 'outerbox', x: 10, y: 10, rx: 10, ry: 10, width: 280, height: 90, fill: 'white', stroke: grey800, 'stroke-width': 3, opacity: 1, background: 'red' })
+    .text({ x: 25, y: 45, 'font-family': `Helvetica`, 'font-size': 35 }, label)
+    .rect({ x: 25, y: 70, rx: 5, ry: 5, width: 20, height: 15, fill: 'RED', stroke: 'black' })
+    .render()
+  // console.log('SAPE', shape)
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(shape)}`
+  */
+}
+
+// https://jsbin.com/jotafawipu/edit?html,output
 export default {
   name: 'App',
   data () {
@@ -37,6 +91,32 @@ export default {
             direction: 'LR',
             sortMethod: 'directed',
             levelSeparation: 250
+          }
+        },
+        edges: {
+          color: {
+            color: '#424242',
+            hover: '#212121',
+            highlight: '#212121'
+          },
+          arrows: {
+            to: {
+              enabled: true,
+              scaleFactor: 0.7
+            }
+          },
+          arrowStrikethrough: false,
+          shadow: {
+            enabled: true,
+            color: '#424242',
+            x: 3,
+            y: 3,
+            size: 15
+          },
+          smooth: {
+            enabled: true,
+            type: 'dynamic',
+            roundness: 0.5
           }
         }
       }
@@ -85,8 +165,8 @@ export default {
       .then(setup => {
         this.$lx.ready({})
       })
-    const nodes = new DataSet(dataset.nodes.map(node => { return { ...node, shape: 'box', font: { size: 24 } } }))
-    const edges = new DataSet(dataset.edges.map(edge => { return { ...edge, arrows: 'to' } }))
+    const nodes = new DataSet(dataset.nodes.map(node => { return { ...node, shape: 'image', image: getNodeShape(node) } }))
+    const edges = new DataSet(dataset.edges.map(edge => { return { ...edge } }))
     this.network = new Network(this.$refs.chart, {nodes, edges}, this.options)
     this.network.on('selectNode', params => {
       if (params.nodes.length === 1) {
@@ -108,11 +188,16 @@ export default {
         this.hoveredNode = undefined
       }, 1000)
     })
+    this.network.on('beforeDrawing', ctx => {
+      console.log(ctx, this.network)
+      // console.log('drawn', ctx)
+      ctx.strokeText('Hello World', 0, 0)
+    })
   }
 }
 </script>
 
-<style lang="stylus" scoped>
+<style lang="stylus">
   @import './stylus/main'
 
   #app
