@@ -1,11 +1,12 @@
 <template>
   <div id="app">
-    <div id="drawing"/>
-    <img class="logo" src="./assets/logo.svg">
+    <div id="drawing" ref="drawing"/>
+    <!--
     <div class="actions-container">
       <button @click="expandAll">Expand All</button>
       <button @click="clusterByBusinessCapabilities">Cluster By Business Capability</button>
     </div>
+    -->
     <div class="hover-container" v-if="hoveredNode">
       Further information for {{hoveredNode.title || hoveredNode}} shown here...
     </div>
@@ -16,12 +17,12 @@
 <script>
 import { DataSet, Network } from 'vis'
 import SVG from 'svg.js'
+import NetworkLegend from './components/NetworkLegend'
 import 'vis/dist/vis-network.min.css'
-const chance = require('chance').Chance()
 
 const dataset = require('../test/dataset.json')
 
-const getNodeShape = node => { /* eslint-disable */
+const getNodeShape = (node, businessCapabilities) => { /* eslint-disable */
   const { title } = node
   const grey800 = '#9e9e9e'
 
@@ -44,82 +45,58 @@ const getNodeShape = node => { /* eslint-disable */
     .x(padding)
     .attr({ 'letter-spacing': '2px' })
 
-  const tags = Array.from(Array(4).keys())
-    .map(n => {
+  const tags = businessCapabilities
+    .filter(() => Math.random() > 0.5)
+    .map((businessCapability, i) => {
       return canvas
         // .circle(40)
         .rect(40, 30)
         .radius(5)
         .y(80)
-        .x(50 * n + padding)
-        .fill(chance.color({format: 'hex'}))
+        .x(50 * i + padding)
+        .fill(businessCapability.bgColor)
     })
 
   const element = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(canvas.svg())}`
   canvas.remove()
   return element
-
-  /*
-  const shape = svg.newInstance().width(300).height(110)
-    .rect({ id: 'outerbox', x: 10, y: 10, rx: 10, ry: 10, width: 280, height: 90, fill: 'white', stroke: grey800, 'stroke-width': 3, opacity: 1, background: 'red' })
-    .text({ x: 25, y: 45, 'font-family': `Helvetica`, 'font-size': 35 }, label)
-    .rect({ x: 25, y: 70, rx: 5, ry: 5, width: 20, height: 15, fill: 'RED', stroke: 'black' })
-    .render()
-  // console.log('SAPE', shape)
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(shape)}`
-  */
 }
 
-// https://jsbin.com/jotafawipu/edit?html,output
+const options = {
+  interaction: { navigationButtons: true, hover: true },
+  layout: {
+    hierarchical: { enabled: true, direction: 'LR', sortMethod: 'directed', levelSeparation: 250 }
+  },
+  edges: {
+    color: { color: '#424242', hover: '#212121', highlight: '#212121' },
+    arrows: {
+      to: { enabled: true, scaleFactor: 0.7 }
+    },
+    arrowStrikethrough: false,
+    shadow: { enabled: true, color: '#424242', x: 3, y: 3, size: 15 },
+    smooth: { enabled: true, type: 'dynamic', roundness: 0.5 }
+  }
+}
+
 export default {
   name: 'App',
+  components: { NetworkLegend },
+  dataset: require('../test/dataset.json'),
+  // non-tracked variable, available at this.$options.nodes
+  nodes: undefined,
+  // non-tracked variable, available at this.$options.edges
+  edges: undefined,
+  network: undefined,
   data () {
     return {
-      hoveredNode: undefined
-    }
-  },
-  computed: {
-    options () {
-      return {
-        interaction: {
-          navigationButtons: true,
-          hover: true
-        },
-        layout: {
-          hierarchical: {
-            enabled: true,
-            direction: 'LR',
-            sortMethod: 'directed',
-            levelSeparation: 250
-          }
-        },
-        edges: {
-          color: {
-            color: '#424242',
-            hover: '#212121',
-            highlight: '#212121'
-          },
-          arrows: {
-            to: {
-              enabled: true,
-              scaleFactor: 0.7
-            }
-          },
-          arrowStrikethrough: false,
-          shadow: {
-            enabled: true,
-            color: '#424242',
-            x: 3,
-            y: 3,
-            size: 15
-          },
-          smooth: {
-            enabled: true,
-            type: 'dynamic',
-            roundness: 0.5
-          }
-        }
-      }
+      hoveredNode: undefined,
+      businessCapabilities: [
+        { name: 'Fleet Management', bgColor: '#f44336' },
+        { name: 'Accounting & Billing', bgColor: '#9c27b0' },
+        { name: 'Legal', bgColor: '#673ab7' },
+        { name: 'Purchasing', bgColor: '#3f51b5' },
+        { name: 'Real State Management', bgColor: '#2196f3' }
+      ]
     }
   },
   methods: {
@@ -161,13 +138,20 @@ export default {
     }
   },
   mounted () {
+    const instance = new NetworkLegend({
+      propsData: { businessCapabilities: this.businessCapabilities }
+    })
+    instance.$mount()
+
+    this.$options.nodes = new DataSet(this.$options.dataset.nodes.map(node => { return { ...node, shape: 'image', image: getNodeShape(node, this.businessCapabilities) } })),
+    this.$options.edges = new DataSet(this.$options.dataset.edges.map(edge => { return { ...edge } })),
     this.$lx.init()
       .then(setup => {
         this.$lx.ready({})
       })
-    const nodes = new DataSet(dataset.nodes.map(node => { return { ...node, shape: 'image', image: getNodeShape(node) } }))
-    const edges = new DataSet(dataset.edges.map(edge => { return { ...edge } }))
-    this.network = new Network(this.$refs.chart, {nodes, edges}, this.options)
+    this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, options)
+    this.$refs.chart.appendChild(instance.$el)
+    /*
     this.network.on('selectNode', params => {
       if (params.nodes.length === 1) {
         if (this.network.isCluster(params.nodes[0]) === true) {
@@ -177,22 +161,24 @@ export default {
         }
       }
     })
-    this.network.on('hoverNode', params => {
+    */
+    this.$options.network.on('hoverNode', params => {
       if (this.timeout) clearTimeout(this.timeout)
       delete this.timeout
       const nodeID = params.node
-      this.hoveredNode = this.network.body.data.nodes.get(nodeID) || nodeID
+      this.hoveredNode = this.$options.network.body.data.nodes.get(nodeID) || nodeID
     })
-    this.network.on('blurNode', params => {
+    this.$options.network.on('blurNode', params => {
       this.timeout = setTimeout(() => {
         this.hoveredNode = undefined
       }, 1000)
     })
-    this.network.on('beforeDrawing', ctx => {
-      console.log(ctx, this.network)
-      // console.log('drawn', ctx)
+    /*
+    this.$options.network.on('beforeDrawing', ctx => {
+      // console.log(ctx, this.$options.network)
       ctx.strokeText('Hello World', 0, 0)
     })
+    */
   }
 }
 </script>
@@ -206,15 +192,11 @@ export default {
     justify-content center
     align-items center
 
-  .logo
-    width 250px
-    margin 2rem
-    align-self flex-end
-    position relative
   .chart-container
     width calc(100% - 8em)
-    height calc(100vh - 160px)
+    height calc(100vh - 20px)
     border 1px solid #bdbdbd
+    position relative
   .actions-container
     position absolute
     top 0
