@@ -15,6 +15,12 @@ import { DataSet, Network } from 'vis'
 import NetworkLegend from './components/NetworkLegend'
 import 'vis/dist/vis-network.min.css'
 
+const labels = [
+  { label: 'Baseline', color: 'red' },
+  { label: 'Transition', color: 'green' },
+  { label: 'Target', color: 'blue' }
+]
+
 export default {
   name: 'App',
   components: { NetworkLegend },
@@ -38,7 +44,7 @@ export default {
       ],
       zoomLimit: 1,
       options: {
-        interaction: { navigationButtons: true, hover: true },
+        interaction: { navigationButtons: true, hover: true, selectable: true },
         layout: {
           hierarchical: {
             enabled: true,
@@ -100,9 +106,7 @@ export default {
   },
   methods: {
     drawOverlay (ctx) {
-      // const { levelSeparation, treeSpacing } = this.$options
       const { levelSeparation, nodeSpacing, treeSpacing } = this.options.layout.hierarchical
-      console.log('spe', levelSeparation, treeSpacing)
 
       const nodes = this.$options.dataset.nodes
         .reduce((accumulator, node) => {
@@ -137,88 +141,69 @@ export default {
           return [minX, minY, maxX, maxY]
         }, [undefined, undefined, undefined, undefined])
 
-      console.log('bboxes', bboxes)
-
-      // DRAW THE GRID
+      // Compute the bounding box that encompasses all business capability trees
       let bbox = bboxes._all
         .map((coord, idx, coords) => idx > 1 ? coord - coords[idx - 2] : coord) // convert minX, minY, maxX, maxY into originX, originY, width, height
+
+      delete bboxes._all
+
       const [originX, originY, width, height] = bbox
-      bbox = [originX - nodeSpacing, originY - nodeSpacing / 2, width + nodeSpacing * 2, height + nodeSpacing]
-      console.log('bbox', bbox)
+      bbox = [originX - nodeSpacing * 1.5, originY - nodeSpacing, width + nodeSpacing * 3, height + nodeSpacing * 2] // Add padding to the outer container
+
+      // Draw the outer container
       ctx.beginPath()
-      ctx.strokeStyle = 'rgb(200,0,0)'
+      ctx.strokeStyle = '#bdbdbd'
       ctx.strokeRect(...bbox)
 
-      let topY
+      const topY = bbox[1]
       Object.entries(bboxes)
         .forEach(([BC, bbox], idx) => {
           let x = bbox[0] - levelSeparation
-          let y = (bbox[1] + bbox[3]) / 2
+          let y = (bbox[1] + bbox[3]) / 2 // Center position for BC Row
 
+          // Draw legend for business capability
           ctx.beginPath()
-          ctx.font = '28px Helvetica'
+          ctx.font = '24px Helvetica'
           ctx.fillStyle = 'black'
           ctx.fillText(BC, x, y)
           ctx.beginPath()
           ctx.strokeStyle = '#bdbdbd'
 
-          y = bbox[1] - treeSpacing / 2
-          if (idx === 0) topY = y
-          ctx.moveTo(-ctx.canvas.clientWidth / 2 + levelSeparation, y)
-          ctx.lineTo(ctx.canvas.clientWidth / 2 + levelSeparation, y)
+          // Add horizontal separators between business capabilities
+          const bottomY = bbox[3] + treeSpacing
+          const startX = bbox[0] - 1.5 * nodeSpacing
+          const endX = bbox[2] + 1.5 * nodeSpacing
+          ctx.moveTo(startX, bottomY)
+          ctx.lineTo(endX, bottomY)
           ctx.stroke()
+          // Add phases to the bottom
+          labels.forEach((label, idx, labels) => {
+            const x = (-1.5 + idx) * levelSeparation
+            ctx.beginPath()
+            ctx.font = '16px Helvetica'
+            ctx.fillText(label.label, x, bottomY)
+            ctx.strokeStyle = '#bdbdbd'
+          })
         })
-      /*
-      ctx.beginPath()
-      ctx.moveTo(-ctx.canvas.clientWidth / 2 + levelSeparation, y)
-      ctx.lineTo(ctx.canvas.clientWidth / 2 + levelSeparation, y)
-      ctx.stroke()
-      */
-      // const viewport = this.$options.network.getViewPosition()
-      // const scale = this.$options.network.getScale()
 
-      // const offsetTop = -ctx.canvas.clientHeight / 2
-      // const labelPaddingTop = 50
-      // const labelOffsetTop = labelPaddingTop + viewport.y
-      // const labelTop = (offsetTop + labelOffsetTop) * scale
-
-      const labels = [
-        { label: 'Baseline', color: 'red' },
-        { label: 'Transition', color: 'green' },
-        { label: 'Target', color: 'blue' },
-        { label: 'Level 4', color: 'black' },
-        { label: 'Level 5', color: 'grey' }
-      ]
-
+      // Add vertical separator for phases
       labels.forEach((label, idx, labels) => {
-        ctx.fillStyle = label.color
-        if (idx < labels.length) {
+        if (idx < labels.length - 1) {
+          ctx.fillStyle = label.color
           ctx.beginPath()
-          const x = (-1.5 + idx) * levelSeparation
-          ctx.moveTo(x, topY)
-
-          ctx.lineTo(x, ctx.canvas.height)
+          const x = (-0.5 + idx) * levelSeparation
+          ctx.moveTo(x, bbox[1])
+          const height = bbox[1] + bbox[3]
+          ctx.lineTo(x, height)
           ctx.strokeStyle = '#bdbdbd'
           ctx.stroke()
         }
-
+        // Add phases labels
         ctx.beginPath()
-        const x = (-1.5 + labels.length) * levelSeparation
-        ctx.moveTo(x, topY)
-
-        ctx.lineTo(x, ctx.canvas.height)
-        ctx.strokeStyle = '#bdbdbd'
-        ctx.stroke()
-
-        // ctx.fill()
-        ctx.beginPath()
-        ctx.font = '32px Helvetica'
+        ctx.font = '24px Helvetica'
         ctx.fillStyle = 'black'
         let labelWidth = ctx.measureText(label.label).width
-        ctx.fillText(label.label, (idx - 1) * levelSeparation - labelWidth / 2, topY - nodeSpacing / 2)
-        // ctx.fillText(label.label, (idx - 1) * levelSeparation - labelWidth / 2, -ctx.canvas.height / 2) // Fixed Top
-        // ctx.fillText(label.label, (idx - 1) * levelSeparation - labelWidth / 2, labelTop) // Moving top
-        // ctx.addHitRegion({id: label.label})
+        ctx.fillText(label.label, (idx - 1) * levelSeparation - labelWidth / 2, topY + nodeSpacing / 2)
       })
     }
   },
@@ -255,7 +240,7 @@ export default {
       }, 1000)
     })
 
-    this.$options.network.on('afterDrawing', this.drawOverlay)
+    this.$options.network.on('beforeDrawing', this.drawOverlay)
 
     /*
     this.$options.network.on('zoom', ({ direction, scale, pointer }) => {
@@ -269,7 +254,6 @@ export default {
 
 <style lang="stylus">
   @import './stylus/main'
-  @import './stylus/material-shadows'
 
   #app
     display flex
@@ -283,10 +267,8 @@ export default {
     right 6em
     width 200px
     border-radius 60px
-    padding 0.5em
     z-index 9999
     background white
-    z-depth-4dp()
 
   .chart-container
     width calc(100% - 8em)
