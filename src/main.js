@@ -3,6 +3,15 @@
 import Vue from 'vue'
 import App from './App'
 import LeanixVuePlugin from './plugins/LeanixVuePlugin'
+import { library } from '@fortawesome/fontawesome-svg-core'
+import { faSyncAlt, faToggleOn, faToggleOff } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+
+library.add(faSyncAlt)
+library.add(faToggleOn)
+library.add(faToggleOff)
+
+Vue.component('font-awesome-icon', FontAwesomeIcon)
 
 Vue.use(LeanixVuePlugin)
 

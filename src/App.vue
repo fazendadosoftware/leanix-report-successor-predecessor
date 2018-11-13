@@ -3,6 +3,14 @@
     <div class="logo">
       <img width="200" src="./assets/logo.svg">
     </div>
+    <div class="actions-container">
+      <transition-group name="fade" class="btn-group">
+        <div class="btn btn-default" :key="'physics'" @click="physics = !physics">
+          <font-awesome-icon :icon="physics ? 'toggle-on' : 'toggle-off'" :style="{color: physics ? 'green' : 'red'}"/>
+          Physics
+        </div>
+      </transition-group>
+    </div>
     <div class="hover-container" v-if="hoveredNode">
       Further information for {{hoveredNode.title || hoveredNode}} shown here...
     </div>
@@ -104,6 +112,17 @@ export default {
       }
     }
   },
+  computed: {
+    physics: {
+      get () {
+        return this.options.physics.enabled
+      },
+      set (physics) {
+        this.options.physics.enabled = physics
+        this.$options.network.setOptions({ physics })
+      }
+    }
+  },
   methods: {
     drawOverlay (ctx) {
       const { levelSeparation, nodeSpacing, treeSpacing } = this.options.layout.hierarchical
@@ -177,8 +196,8 @@ export default {
           ctx.stroke()
           // Add phases to the bottom
           labels.forEach((label, idx, labels) => {
-            const paddingX = 20
-            const paddingY = 20
+            const paddingX = 10
+            const paddingY = 10
             ctx.beginPath()
             ctx.font = 'italic 16px Helvetica'
             const x = (idx - 0.5) * levelSeparation - ctx.measureText(label.label).width - paddingX
@@ -238,6 +257,11 @@ export default {
 
     this.$options.network.on('beforeDrawing', this.drawOverlay)
 
+    setTimeout(() => {
+      console.log('redrawing')
+      this.$options.network.redraw()
+    }, 5000)
+
     /*
     this.$options.network.on('zoom', ({ direction, scale, pointer }) => {
       if (scale <= this.zoomLimit) this.$options.network.moveTo({ direction, pointer, scale: this.zoomLimit })
@@ -250,6 +274,7 @@ export default {
 
 <style lang="stylus">
   @import './stylus/main'
+  @import './stylus/material-color'
 
   #app
     display flex
@@ -266,20 +291,72 @@ export default {
     z-index 9999
     background white
 
+  .actions-container
+    position absolute
+    top 0
+    left 0
+    noselect
+
   .chart-container
     width calc(100% - 8em)
     height calc(100vh - 20px)
     border 1px solid #bdbdbd
     position relative
+
   .actions-container
     position absolute
     top 0
     left 0
-    padding 1em
+    padding-top 1.5em
+    padding-left 5.5em
+    z-index 9999
+
   .hover-container
     position absolute
     top 0
     left 50%
     transform translateX(-50%)
     padding 2em
+
+  .btn
+    display: inline-block
+    margin-bottom: 0
+    font-weight: 400
+    text-align: center
+    vertical-align: middle
+    -ms-touch-action: manipulation
+    touch-action: manipulation
+    cursor: pointer
+    background-image: none
+    border: 1px solid transparent
+    white-space: nowrap
+    font-size: 12px
+    line-height: 1.428571429
+    border-radius: 3px
+    padding 1px 5px
+    &[disabled]
+      transition opacity 0.6 ease
+      opacity 0.3
+      cursor default
+    transition background 0.2s
+    /*
+    &:hover
+      background clr-grey-100
+    &:active
+      background clr-grey-300
+    */
+
+  .btn-default
+    color: #333
+    background-color: #fff
+    border-color: #ccc
+
+  .fade-enter-active, .fade-leave-active
+    transition opacity .5s
+  .fade-enter, .fade-leave-to /* .fade-leave-active below version 2.1.8 */
+    opacity 0
+
+  .btn-group
+    > .btn
+      margin-right 5px
 </style>
