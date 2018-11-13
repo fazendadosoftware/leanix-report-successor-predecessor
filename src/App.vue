@@ -148,14 +148,13 @@ export default {
       delete bboxes._all
 
       const [originX, originY, width, height] = bbox
-      bbox = [originX - nodeSpacing * 1.5, originY - nodeSpacing, width + nodeSpacing * 3, height + nodeSpacing * 2] // Add padding to the outer container
+      bbox = [originX - levelSeparation / 2, originY - nodeSpacing, width + levelSeparation, height + nodeSpacing * 2] // Add padding to the outer container
 
       // Draw the outer container
       ctx.beginPath()
       ctx.strokeStyle = '#bdbdbd'
       ctx.strokeRect(...bbox)
 
-      const topY = bbox[1]
       Object.entries(bboxes)
         .forEach(([BC, bbox], idx) => {
           let x = bbox[0] - levelSeparation
@@ -171,17 +170,20 @@ export default {
 
           // Add horizontal separators between business capabilities
           const bottomY = bbox[3] + treeSpacing
-          const startX = bbox[0] - 1.5 * nodeSpacing
-          const endX = bbox[2] + 1.5 * nodeSpacing
+          const startX = bbox[0] - levelSeparation / 2
+          const endX = bbox[2] + levelSeparation / 2
           ctx.moveTo(startX, bottomY)
           ctx.lineTo(endX, bottomY)
           ctx.stroke()
           // Add phases to the bottom
           labels.forEach((label, idx, labels) => {
-            const x = (-1.5 + idx) * levelSeparation
+            const paddingX = 20
+            const paddingY = 20
             ctx.beginPath()
-            ctx.font = '16px Helvetica'
-            ctx.fillText(label.label, x, bottomY)
+            ctx.font = 'italic 16px Helvetica'
+            const x = (idx - 0.5) * levelSeparation - ctx.measureText(label.label).width - paddingX
+            const y = bottomY - paddingY
+            ctx.fillText(label.label, x, y)
             ctx.strokeStyle = '#bdbdbd'
           })
         })
@@ -198,12 +200,6 @@ export default {
           ctx.strokeStyle = '#bdbdbd'
           ctx.stroke()
         }
-        // Add phases labels
-        ctx.beginPath()
-        ctx.font = '24px Helvetica'
-        ctx.fillStyle = 'black'
-        let labelWidth = ctx.measureText(label.label).width
-        ctx.fillText(label.label, (idx - 1) * levelSeparation - labelWidth / 2, topY + nodeSpacing / 2)
       })
     }
   },
