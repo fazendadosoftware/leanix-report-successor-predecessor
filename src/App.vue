@@ -1,6 +1,8 @@
 <template>
   <div id="app">
-    <img class="logo" src="./assets/logo.svg">
+    <div class="logo">
+      <img width="200" src="./assets/logo.svg">
+    </div>
     <div class="hover-container" v-if="hoveredNode">
       Further information for {{hoveredNode.title || hoveredNode}} shown here...
     </div>
@@ -68,10 +70,23 @@ export default {
           shadow: { enabled: true, color: '#424242', x: 3, y: 3, size: 15 },
           smooth: { enabled: false }
         },
+        physics: {
+          enabled: true
+        },
         groups: {
           'BC A': {
             color: {
               background: 'red',
+              hover: {
+                border: 'black',
+                background: 'black'
+              }
+            },
+            font: { color: 'white' }
+          },
+          'BC B': {
+            color: {
+              background: 'blue',
               hover: {
                 border: 'black',
                 background: 'black'
@@ -111,6 +126,29 @@ export default {
           return accumulator
         }, {})
 
+      bboxes._all = Object.values(bboxes)
+        .reduce((accumulator, bbox) => {
+          let [minX, minY, maxX, maxY] = accumulator
+          const [mX, mY, MX, MY] = bbox
+          if (minX === undefined || mX < minX) minX = mX
+          if (minY === undefined || mY < minY) minY = mY
+          if (maxX === undefined || MX > maxX) maxX = MX
+          if (maxY === undefined || MY > maxY) maxY = MY
+          return [minX, minY, maxX, maxY]
+        }, [undefined, undefined, undefined, undefined])
+
+      console.log('bboxes', bboxes)
+
+      // DRAW THE GRID
+      let bbox = bboxes._all
+        .map((coord, idx, coords) => idx > 1 ? coord - coords[idx - 2] : coord) // convert minX, minY, maxX, maxY into originX, originY, width, height
+      const [originX, originY, width, height] = bbox
+      bbox = [originX - nodeSpacing, originY - nodeSpacing / 2, width + nodeSpacing * 2, height + nodeSpacing]
+      console.log('bbox', bbox)
+      ctx.beginPath()
+      ctx.strokeStyle = 'rgb(200,0,0)'
+      ctx.strokeRect(...bbox)
+
       let topY
       Object.entries(bboxes)
         .forEach(([BC, bbox], idx) => {
@@ -136,8 +174,6 @@ export default {
       ctx.lineTo(ctx.canvas.clientWidth / 2 + levelSeparation, y)
       ctx.stroke()
       */
-      console.log('topY', topY)
-
       // const viewport = this.$options.network.getViewPosition()
       // const scale = this.$options.network.getScale()
 
@@ -219,7 +255,7 @@ export default {
       }, 1000)
     })
 
-    this.$options.network.on('beforeDrawing', this.drawOverlay)
+    this.$options.network.on('afterDrawing', this.drawOverlay)
 
     /*
     this.$options.network.on('zoom', ({ direction, scale, pointer }) => {
@@ -233,12 +269,24 @@ export default {
 
 <style lang="stylus">
   @import './stylus/main'
+  @import './stylus/material-shadows'
 
   #app
     display flex
     flex-flow column
     justify-content center
     align-items center
+
+  .logo
+    position fixed
+    top 2em
+    right 6em
+    width 200px
+    border-radius 60px
+    padding 0.5em
+    z-index 9999
+    background white
+    z-depth-4dp()
 
   .chart-container
     width calc(100% - 8em)
