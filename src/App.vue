@@ -1,12 +1,6 @@
 <template>
   <div id="app">
     <div id="drawing" ref="drawing"/>
-    <!--
-    <div class="actions-container">
-      <button @click="expandAll">Expand All</button>
-      <button @click="clusterByBusinessCapabilities">Cluster By Business Capability</button>
-    </div>
-    -->
     <div class="hover-container" v-if="hoveredNode">
       Further information for {{hoveredNode.title || hoveredNode}} shown here...
     </div>
@@ -16,72 +10,15 @@
 
 <script>
 import { DataSet, Network } from 'vis'
-import SVG from 'svg.js'
 import NetworkLegend from './components/NetworkLegend'
 import 'vis/dist/vis-network.min.css'
-
-const dataset = require('../test/dataset.json')
-
-const getNodeShape = (node, businessCapabilities) => { /* eslint-disable */
-  const { title } = node
-  const grey800 = '#9e9e9e'
-
-  const canvasDims = [320, 140]
-  const borderWidth = 3
-  const padding = 20
-  const containerDims = canvasDims.map(dim => dim - 2 * borderWidth)
-
-  const canvas = SVG('drawing').size(...canvasDims)
-  const defs = canvas.defs()
-
-  const container = canvas.rect(...containerDims)
-    .move(borderWidth, borderWidth)
-    .stroke({ width: borderWidth, color: '#424242' })
-    .radius(10)
-    .attr({ fill: 'white' })
-
-  const text = canvas.text(title || '')
-    .font({ family: 'Helvetica', size: 35, anchor: 'start' })
-    .x(padding)
-    .attr({ 'letter-spacing': '2px' })
-
-  const tags = businessCapabilities
-    .filter(() => Math.random() > 0.5)
-    .map((businessCapability, i) => {
-      return canvas
-        // .circle(40)
-        .rect(40, 30)
-        .radius(5)
-        .y(80)
-        .x(50 * i + padding)
-        .fill(businessCapability.bgColor)
-    })
-
-  const element = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(canvas.svg())}`
-  canvas.remove()
-  return element
-}
-
-const options = {
-  interaction: { navigationButtons: true, hover: true },
-  layout: {
-    hierarchical: { enabled: true, direction: 'LR', sortMethod: 'directed', levelSeparation: 250 }
-  },
-  edges: {
-    color: { color: '#424242', hover: '#212121', highlight: '#212121' },
-    arrows: {
-      to: { enabled: true, scaleFactor: 0.7 }
-    },
-    arrowStrikethrough: false,
-    shadow: { enabled: true, color: '#424242', x: 3, y: 3, size: 15 },
-    smooth: { enabled: true, type: 'dynamic', roundness: 0.5 }
-  }
-}
 
 export default {
   name: 'App',
   components: { NetworkLegend },
   dataset: require('../test/dataset.json'),
+  nodeWidth: 150,
+  levelSeparation: 350,
   // non-tracked variable, available at this.$options.nodes
   nodes: undefined,
   // non-tracked variable, available at this.$options.edges
@@ -96,61 +33,167 @@ export default {
         { name: 'Legal', bgColor: '#673ab7' },
         { name: 'Purchasing', bgColor: '#3f51b5' },
         { name: 'Real State Management', bgColor: '#2196f3' }
-      ]
+      ],
+      zoomLimit: 1,
+      options: {
+        interaction: { navigationButtons: true, hover: true },
+        layout: {
+          hierarchical: {
+            enabled: true,
+            direction: 'LR',
+            sortMethod: 'directed',
+            levelSeparation: 350,
+            nodeSpacing: 100,
+            treeSpacing: 100
+          }
+        },
+        nodes: {
+          borderWidth: 1,
+          borderWidthSelected: 1,
+          color: {
+            border: 'black',
+            background: 'white',
+            // highlight: { border: 'black', background: 'green' },
+            hover: { border: 'black', background: 'white' }
+          },
+          font: { face: 'Helvetica', color: 'black', size: 13 },
+          shapeProperties: { borderRadius: 4 },
+          widthConstraint: { minimum: 150, maximum: 150 },
+          heightConstraint: { minimum: 40 },
+          labelHighlightBold: false
+        },
+        edges: {
+          color: { color: '#424242', hover: '#212121', highlight: '#212121' },
+          arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+          shadow: { enabled: true, color: '#424242', x: 3, y: 3, size: 15 },
+          smooth: { enabled: false }
+        },
+        groups: {
+          'BC A': {
+            color: {
+              background: 'red',
+              hover: {
+                border: 'black',
+                background: 'black'
+              }
+            },
+            font: { color: 'white' }
+          }
+        }
+      }
     }
   },
   methods: {
-    clusterByBusinessCapabilities () {
-      const businessCapabilities = dataset.nodes.reduce((accumulator, node) => Array.from(new Set([...accumulator, node.businessCapability])))
-      businessCapabilities.forEach(businessCapability => {
-        const clusterOptions = {
-          joinCondition: childOptions => childOptions.businessCapability === businessCapability,
-          processProperties: (clusterOptions, childNodes, childEdges) => {
-            clusterOptions.businessCapability = businessCapability
-            return clusterOptions
-          },
-          clusterNodeProperties: { id: `cluster:${businessCapability}`, borderWidth: 3, shape: 'box', label: businessCapability, color: 'red', font: { size: 24, color: 'white' } }
+    drawOverlay (ctx) {
+      // const { levelSeparation, treeSpacing } = this.$options
+      const { levelSeparation, nodeSpacing, treeSpacing } = this.options.layout.hierarchical
+      console.log('spe', levelSeparation, treeSpacing)
+
+      const nodes = this.$options.dataset.nodes
+        .reduce((accumulator, node) => {
+          if (!accumulator[node.group]) accumulator[node.group] = []
+          accumulator[node.group].push(node.id)
+          return accumulator
+        }, {})
+      const bboxes = Object.entries(nodes)
+        .reduce((accumulator, [bc, ids]) => {
+          const positions = this.$options.network.getPositions(ids)
+          const bbox = Object.values(positions)
+            .reduce((accumulator, {x, y}) => {
+              let [minX, minY, maxX, maxY] = accumulator
+              if (minX === undefined || x < minX) minX = x
+              if (minY === undefined || y < minY) minY = y
+              if (maxX === undefined || x > maxX) maxX = x
+              if (maxY === undefined || y > maxY) maxY = y
+              return [minX, minY, maxX, maxY]
+            }, [undefined, undefined, undefined, undefined])
+          accumulator[bc] = bbox
+          return accumulator
+        }, {})
+
+      let topY
+      Object.entries(bboxes)
+        .forEach(([BC, bbox], idx) => {
+          let x = bbox[0] - levelSeparation
+          let y = (bbox[1] + bbox[3]) / 2
+
+          ctx.beginPath()
+          ctx.font = '28px Helvetica'
+          ctx.fillStyle = 'black'
+          ctx.fillText(BC, x, y)
+          ctx.beginPath()
+          ctx.strokeStyle = '#bdbdbd'
+
+          y = bbox[1] - treeSpacing / 2
+          if (idx === 0) topY = y
+          ctx.moveTo(-ctx.canvas.clientWidth / 2 + levelSeparation, y)
+          ctx.lineTo(ctx.canvas.clientWidth / 2 + levelSeparation, y)
+          ctx.stroke()
+        })
+      /*
+      ctx.beginPath()
+      ctx.moveTo(-ctx.canvas.clientWidth / 2 + levelSeparation, y)
+      ctx.lineTo(ctx.canvas.clientWidth / 2 + levelSeparation, y)
+      ctx.stroke()
+      */
+      console.log('topY', topY)
+
+      // const viewport = this.$options.network.getViewPosition()
+      // const scale = this.$options.network.getScale()
+
+      // const offsetTop = -ctx.canvas.clientHeight / 2
+      // const labelPaddingTop = 50
+      // const labelOffsetTop = labelPaddingTop + viewport.y
+      // const labelTop = (offsetTop + labelOffsetTop) * scale
+
+      const labels = [
+        { label: 'Baseline', color: 'red' },
+        { label: 'Transition', color: 'green' },
+        { label: 'Target', color: 'blue' },
+        { label: 'Level 4', color: 'black' },
+        { label: 'Level 5', color: 'grey' }
+      ]
+
+      labels.forEach((label, idx, labels) => {
+        ctx.fillStyle = label.color
+        if (idx < labels.length) {
+          ctx.beginPath()
+          const x = (-1.5 + idx) * levelSeparation
+          ctx.moveTo(x, topY)
+
+          ctx.lineTo(x, ctx.canvas.height)
+          ctx.strokeStyle = '#bdbdbd'
+          ctx.stroke()
         }
-        this.network.cluster(clusterOptions)
+
+        ctx.beginPath()
+        const x = (-1.5 + labels.length) * levelSeparation
+        ctx.moveTo(x, topY)
+
+        ctx.lineTo(x, ctx.canvas.height)
+        ctx.strokeStyle = '#bdbdbd'
+        ctx.stroke()
+
+        // ctx.fill()
+        ctx.beginPath()
+        ctx.font = '32px Helvetica'
+        ctx.fillStyle = 'black'
+        let labelWidth = ctx.measureText(label.label).width
+        ctx.fillText(label.label, (idx - 1) * levelSeparation - labelWidth / 2, topY - nodeSpacing / 2)
+        // ctx.fillText(label.label, (idx - 1) * levelSeparation - labelWidth / 2, -ctx.canvas.height / 2) // Fixed Top
+        // ctx.fillText(label.label, (idx - 1) * levelSeparation - labelWidth / 2, labelTop) // Moving top
+        // ctx.addHitRegion({id: label.label})
       })
-    },
-    clusterChildren (parentNodeID) {
-      const parentNodeProperties = this.network.body.data.nodes.get(parentNodeID)
-
-      const getChildrenIDs = parentNodeID => this.network.getConnectedNodes(parentNodeID, 'to')
-        .reduce((accumulator, childID) => Array.from(new Set([...accumulator, childID, ...getChildrenIDs(childID)])), [])
-
-      const childrenIDs = getChildrenIDs(parentNodeID)
-
-      const clusterOptions = {
-        joinCondition: nodeOptions => nodeOptions.id === parentNodeID || childrenIDs.includes(nodeOptions.id),
-        processProperties: (clusterOptions, childNodes, childEdges) => {
-          clusterOptions.label = `${parentNodeProperties.label}`
-          clusterOptions.businessCapability = parentNodeProperties.businessCapability
-          return clusterOptions
-        },
-        clusterNodeProperties: { color: 'red', shape: 'box', font: { size: 24, color: 'white' } }
-      }
-      this.network.cluster(clusterOptions)
-    },
-    expandAll () {
-      this.network.clustering.body.nodeIndices.forEach(id => this.network.isCluster(id) ? this.network.openCluster(id) : undefined)
     }
   },
   mounted () {
-    const instance = new NetworkLegend({
-      propsData: { businessCapabilities: this.businessCapabilities }
-    })
-    instance.$mount()
-
-    this.$options.nodes = new DataSet(this.$options.dataset.nodes.map(node => { return { ...node, shape: 'image', image: getNodeShape(node, this.businessCapabilities) } })),
-    this.$options.edges = new DataSet(this.$options.dataset.edges.map(edge => { return { ...edge } })),
+    this.$options.nodes = new DataSet(this.$options.dataset.nodes.map(node => { return { ...node, label: node.title, shape: 'box' } }))
+    this.$options.edges = new DataSet(this.$options.dataset.edges.map(edge => { return { ...edge } }))
     this.$lx.init()
       .then(setup => {
         this.$lx.ready({})
       })
-    this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, options)
-    this.$refs.chart.appendChild(instance.$el)
+    this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
     /*
     this.network.on('selectNode', params => {
       if (params.nodes.length === 1) {
@@ -162,21 +205,26 @@ export default {
       }
     })
     */
+
     this.$options.network.on('hoverNode', params => {
       if (this.timeout) clearTimeout(this.timeout)
       delete this.timeout
       const nodeID = params.node
       this.hoveredNode = this.$options.network.body.data.nodes.get(nodeID) || nodeID
     })
+
     this.$options.network.on('blurNode', params => {
       this.timeout = setTimeout(() => {
         this.hoveredNode = undefined
       }, 1000)
     })
+
+    this.$options.network.on('beforeDrawing', this.drawOverlay)
+
     /*
-    this.$options.network.on('beforeDrawing', ctx => {
-      // console.log(ctx, this.$options.network)
-      ctx.strokeText('Hello World', 0, 0)
+    this.$options.network.on('zoom', ({ direction, scale, pointer }) => {
+      if (scale <= this.zoomLimit) this.$options.network.moveTo({ direction, pointer, scale: this.zoomLimit })
+      this.drawOverlay(this.$options.network.canvas.getContext('2d'))
     })
     */
   }
