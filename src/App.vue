@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <div id="drawing" ref="drawing"/>
+    <img class="logo" src="./assets/logo.svg">
     <div class="hover-container" v-if="hoveredNode">
       Further information for {{hoveredNode.title || hoveredNode}} shown here...
     </div>
