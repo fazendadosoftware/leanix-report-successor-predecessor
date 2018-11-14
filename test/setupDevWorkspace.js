@@ -1,8 +1,10 @@
-import Queries from '../src/helpers/queries'
+const Queries = require('../src/helpers/queries')
 const assert = require('chai').assert
 const ProgressBar = require('progress')
 const lxr = require('../lxr.json')
 const leanixjs = require('leanix-js')
+
+const dataset = require('./devDataset.json')
 
 const { Authenticator, GraphQLClient } = leanixjs
 const authenticator = new Authenticator(lxr.host, lxr.apitoken)
@@ -11,6 +13,8 @@ const graphql = new GraphQLClient(authenticator)
 const queries = new Queries(graphql)
 
 describe('The queries', () => {
+  let tagGroup
+  let businessCapabilities
   before(async () => {
     await authenticator.start()
   })
@@ -42,67 +46,35 @@ describe('The queries', () => {
     assert(errors.length === 0, 'All factsheets should have been deleted')
   })
 
-  xit('should create projects in workspace', async () => {
-    let errors = []
-    const opportunityCostTagGroup = await queries.fetchOpportunityCostTagGroup()
-    const bar = new ProgressBar(
-      `Creating ${projects.length} projects [:bar] :rate/fps :percent :etas :errors errors`,
-      { total: projects.length, renderThrottle: 100 }
-    )
-    const opportunityCostTags = opportunityCostTagGroup.tags
-    for (let project of projects) {
-      project.tags = project.tags
-        .map(tagName => opportunityCostTags.find(tag => tag.name === tagName))
-        .map(tag => { return { tagId: tag.id } })
-      const query = `mutation($input:BaseFactSheetInput!,$patches:[Patch]){createFactSheet(input:$input,patches:$patches){factSheet{id}}}`
-      const twoDaysAgo = new Date()
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2)
-      const variables = {
-        input: { name: project.name, type: 'Project' },
-        patches: [
-          { op: 'replace', path: '/externalId', value: JSON.stringify({ externalId: project.externalId }) },
-          { op: 'replace', path: '/budgetCapEx', value: project.budgetCapEx },
-          { op: 'replace', path: '/budgetOpEx', value: project.budgetOpEx },
-          { op: 'replace', path: '/tags', value: JSON.stringify(project.tags) },
-          { op: 'replace', path: '/lifecycle', value: JSON.stringify({ phases: [{ phase: project.lifecycle, startDate: twoDaysAgo.toISOString().substring(0, 10) }] }) }
-        ]
-      }
-
-      await graphql
-        .executeGraphQL(query, variables)
-        .catch(() => errors.push(project.id))
-      bar.tick({ errors: errors.length })
+  it('should find the tagGroup "transition phase" and, if existing, delete it and tags ', async () => {
+    try {
+      const tagGroup = await queries.fetchTransitionPhaseTagGroup(dataset.tagGroup)
+      if (tagGroup) await queries.deleteTransitionPhaseTagGroupAndTags(tagGroup)
+    } catch (err) {
+      assert.isNull(err)
     }
   })
 
-  xit('should create businessCapabilities in workspace', async () => {
-    let errors = []
-    const projectsIndex = await queries.fetchProjectsIndex()
-    const bar = new ProgressBar(
-      `Creating ${businessCapabilities.length} business capabilities [:bar] :rate/fps :percent :etas :errors errors`,
-      { total: businessCapabilities.length, renderThrottle: 100 }
-    )
-    for (let businessCapability of businessCapabilities) {
-      const projectRelationsPatches = businessCapability.projects
-        .map(externalId => {
-          const project = projectsIndex[externalId]
-          if (project === undefined) console.warn(`Could not found project with externalId ${externalId}!!!`)
-          return project
-            ? {op: 'add', path: `/relBusinessCapabilityToProject/new_${project.id}`, value: JSON.stringify({ factSheetId: project.id })}
-            : undefined
-        })
-        .filter(project => project !== undefined)
-      const query = `mutation($input:BaseFactSheetInput!,$patches:[Patch]){createFactSheet(input:$input,patches:$patches){factSheet{id}}}`
-      const variables = {
-        input: { name: businessCapability.name, type: 'BusinessCapability' },
-        patches: [
-          ...projectRelationsPatches
-        ]
-      }
-      await graphql
-        .executeGraphQL(query, variables)
-        .catch(() => errors.push(businessCapability.id))
-      bar.tick({ errors: errors.length })
+  it('should create the tag group and tags in the workspace', async () => {
+    try {
+      tagGroup = await queries.createTransitionPhaseTagGroupAndTags(dataset.tagGroup)
+      assert.isObject(tagGroup)
+      assert.isString(tagGroup.id)
+      assert.isArray(tagGroup.tags)
+      assert.lengthOf(tagGroup.tags, dataset.tagGroup.tags.length)
+    } catch (err) {
+      assert.isNull(err)
+    }
+  })
+
+  it('should create the business capabilities in the workspace', async () => {
+    try {
+      businessCapabilities = await queries.createBusinessCapabilities(dataset.businessCapabilities)
+      businessCapabilities = businessCapabilities.reduce((accumulator, bc) => { accumulator[bc.name] = bc; return accumulator }, {})
+      assert.isObject(businessCapabilities)
+      assert.hasAllKeys(businessCapabilities, dataset.businessCapabilities.map(bc => bc.name))
+    } catch (err) {
+      assert.isNull(err)
     }
   })
 })

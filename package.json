@@ -17,9 +17,8 @@
     "@fortawesome/free-solid-svg-icons": "^5.5.0",
     "@fortawesome/vue-fontawesome": "^0.1.2",
     "@leanix/reporting": "^0.2.2",
-    "i": "^0.3.6",
+    "fuse.js": "^3.3.0",
     "npm": "^6.4.1",
-    "svg.js": "^2.6.6",
     "vis": "^4.21.0",
     "vue": "^2.5.2"
   },

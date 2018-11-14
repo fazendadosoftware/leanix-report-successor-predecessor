@@ -1,19 +1,31 @@
-export default class Queries {
+const Fuse = require('fuse.js')
+module.exports = class Queries {
   constructor (_lx) {
     this.lx = _lx || lx
     if (!this.lx) throw Error('LX object not found!')
-    this.opportunityCostTagGroup = undefined
+    this.tagGroup = undefined
   }
 
-  async fetchOpportunityCostTagGroup () {
-    const query = `{op:allTagGroups{edges{node{id name restrictToFactSheetTypes tags {edges {node {id name}}}}}}}`
+  async fetchTransitionPhaseTagGroup (tagGroup) {
+    const tagGroupSeachTerm = tagGroup.name
+
+    const query = `
+      fragment Tag on Tag {id name color status}
+
+      fragment TagGroup on TagGroup {
+        id name shortName description mode mandatory restrictToFactSheetTypes
+        tags{edges{node{...Tag}}}
+      }
+
+      {op:allTagGroups{edges{node{...TagGroup}}}}
+    `
     return this.lx.executeGraphQL(query).then(res => {
       const tagGroups = res.op.edges
         .map(edge => edge.node)
         .filter(
           node =>
             !node.restrictToFactSheetTypes.length ||
-            node.restrictToFactSheetTypes.indexOf('BusinessCapability') > -1
+            node.restrictToFactSheetTypes.indexOf('Application') > -1
         )
       const options = {
         shouldSort: true,
@@ -21,107 +33,82 @@ export default class Queries {
         keys: ['name']
       }
       const fuse = new Fuse(tagGroups, options)
-      const results = fuse.search('opportunity cost')
-      if (!results.length) { throw Error(`could not find tagGroup "opportunity costs"`) }
-      const opportunityCostsTagGroup = results[0]
-      opportunityCostsTagGroup.tags = opportunityCostsTagGroup.tags.edges.map(
-        edge => edge.node
-      )
-      this.opportunityCostTagGroup = opportunityCostsTagGroup
-      return opportunityCostsTagGroup
+      const results = fuse.search(tagGroupSeachTerm)
+      // if (!results.length) { throw Error(`could not find tagGroup "${tagGroupSeachTerm}"`) }
+      if (!results.length) return
+      const tagGroup = results[0]
+      tagGroup.tags = tagGroup.tags.edges.map(edge => edge.node)
+      this.tagGroup = tagGroup
+      return tagGroup
     })
   }
 
-  async fetchBusinessCapabilities ({filter = {}, xKPIBuckets = 4} = {}) {
-    // Tag names used to quantity opportunity cost - yKPI
-    const tagNames = ['low', 'medium', 'high', 'very high']
-    const sortByOpportunityCostTagName = (a, b) => {
-      return tagNames.indexOf(b) - tagNames.indexOf(a)
+  async deleteTransitionPhaseTagGroupAndTags (transitionPhaseTagGroup) {
+    const deleteTagMutation = `mutation($id:ID!){deleteTag(id:$id){id}}`
+    const deleteTagGroupMutation = `mutation($id:ID!){deleteTagGroup(id:$id){id}}`
+
+    await Promise.all(transitionPhaseTagGroup.tags.map(tag => this.lx.executeGraphQL(deleteTagMutation, { id: tag.id })))
+    await this.lx.executeGraphQL(deleteTagGroupMutation, { id: transitionPhaseTagGroup.id })
+  }
+
+  async createTransitionPhaseTagGroupAndTags (tagGroup) {
+    let { tags } = tagGroup
+
+    const variables = {
+      name: tagGroup.name,
+      mode: 'MULTIPLE',
+      mandatory: false,
+      description: 'Created by report leanix-report-sucessor-predecessor',
+      restrictToFactSheetTypes: ['Application'],
+      validateOnly: false
     }
 
-    if (!this.opportunityCostTagGroup) await this.fetchOpportunityCostTagGroup()
-    const projectFragment = `{id name lifecycle{asString phases{phase startDate}} budgetOpEx budgetCapEx tags{id name tagGroup{id}}}`
-    const projectsFragment = `projects:relBusinessCapabilityToProject{edges{node{factSheet{...on Project${projectFragment}}}}}`
-    const businessCapabilityFragment = `...on BusinessCapability{id name ${projectsFragment}}`
-    const query = `query($filter:FilterInput){op:allFactSheets(filter:$filter){edges{node{${businessCapabilityFragment}}}}}`
-    return this.lx.executeGraphQL(query, {filter})
-      .then(res => {
-        const businessCapabilities = res.op.edges
-          .map(edge => {
-            const projects = edge.node.projects.edges
-              .map(edge => edge.node.factSheet)
-              .filter(project => {
-                const isInPlanningPhase = project.lifecycle.asString === 'plan'
-                const hasTagOpportunityCost = project.tags.filter(tag => tag.tagGroup.id === this.opportunityCostTagGroup.id).length
-                return isInPlanningPhase && hasTagOpportunityCost
-              })
-            return {...edge.node, projects}
-          })
-          .filter(businessCapability => businessCapability.projects.length)
-          .map(businessCapability => {
-            // Compute the opportunity cost for a business capability, given the related projects
-            businessCapability.opportunityCost = businessCapability.projects
-              .map(project => project.tags
-                .filter(tag => tag.tagGroup.id === this.opportunityCostTagGroup.id)
-                .map(tag => tag.name)
-                .sort(sortByOpportunityCostTagName)
-                .shift()
-              )
-              .sort(sortByOpportunityCostTagName)
-              .shift()
-            // Compute the total cost for a business capability
-            const xKPI = businessCapability.projects
-              .reduce((accumulator, project) => {
-                const {budgetCapEx, budgetOpEx} = project
-                const deltaDays = project.lifecycle.phases
-                  .filter(phase => phase.phase === 'plan')
-                  .reduce((accumulator, phase) => {
-                    const startDate = new Date(phase.startDate)
-                    const today = new Date()
-                    const timeDiff = Math.abs(today.getTime() - startDate.getTime())
-                    const diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24))
-                    accumulator += diffDays
-                    return accumulator
-                  }, 0)
-                accumulator += (budgetCapEx + budgetOpEx) / deltaDays
-                return accumulator
-              }, 0)
-            const sumBudgets = businessCapability.projects
-              .reduce((accumulator, project) => {
-                const {budgetCapEx, budgetOpEx} = project
-                accumulator += (budgetCapEx + budgetOpEx)
-                return accumulator
-              }, 0)
-            return {...businessCapability, xKPI, sumBudgets}
-          })
-        const maxXKPI = Math.max(...businessCapabilities.map(businessCapability => businessCapability.xKPI))
-        businessCapabilities
-          .map(businessCapability => {
-            // Normalize xKPI
-            businessCapability.xKPIValue = businessCapability.xKPI
-            businessCapability.xKPI = Math.round((businessCapability.xKPI / maxXKPI) * (xKPIBuckets - 1))
-            businessCapability.yKPI = tagNames.indexOf(businessCapability.opportunityCost)
-            return businessCapability
-          })
-        businessCapabilities.maxXKPI = maxXKPI
-        businessCapabilities.xKPIBuckets = xKPIBuckets
-        businessCapabilities.yKPIBuckets = tagNames.length
-        businessCapabilities.yKPIBucketNames = tagNames
-        return businessCapabilities
-      })
+    const mutationCreateTagGroup = `
+      fragment TagGroup on TagGroup {
+        id name shortName description mode mandatory restrictToFactSheetTypes
+      }
+      mutation(
+        $name:String!,
+        $shortName:String,
+        $description:String,
+        $mode:TagGroupModeEnum!,
+        $mandatory:Boolean,
+        $restrictToFactSheetTypes:[FactSheetType!],
+        $validateOnly:Boolean
+      ) {
+        op:createTagGroup(
+          name:$name,
+          shortName:$shortName,
+          description:$description,
+          mode:$mode,
+          mandatory:$mandatory,
+          restrictToFactSheetTypes:$restrictToFactSheetTypes,
+          validateOnly:$validateOnly
+        ){...TagGroup}}
+    `
+
+    const mutationCreateTag = `
+      fragment Tag on Tag {id name description color status}
+      mutation($name:String!,$description:String,$color:String,$tagGroupId:ID){
+        op:createTag(name:$name,description:$description,color:$color,tagGroupId:$tagGroupId){...Tag}
+      }
+    `
+
+    tagGroup = await this.lx.executeGraphQL(mutationCreateTagGroup, variables).then(res => res.op)
+    tagGroup.tags = await Promise.all(tags.map(tag => this.lx.executeGraphQL(mutationCreateTag, { ...tag, tagGroupId: tagGroup.id }).then(res => res.op)))
+    return tagGroup
   }
 
-  async fetchProjectsIndex () {
-    const projectFragment = `...on Project{id externalId{externalId} name lifecycle{asString phases{phase startDate}} budgetOpEx budgetCapEx tags{id name tagGroup{id}}}`
-    const query = `{op:allFactSheets(factSheetType:Project){edges{node{${projectFragment}}}}}`
-    return this.lx.executeGraphQL(query)
-      .then(res => {
-        return res.op.edges
-          .map(edge => { const node = edge.node; node.externalId = node.externalId ? node.externalId.externalId : undefined; return node })
-          .reduce((accumulator, node) => {
-            accumulator[node.externalId] = node
-            return accumulator
-          }, {})
-      })
+  async createBusinessCapabilities (businessCapabilities = []) {
+    const mutation = `
+      fragment BaseFactSheet on BaseFactSheet {id name type}
+      mutation($input:BaseFactSheetInput!,$patches:[Patch]){
+        op:createFactSheet(input:$input,patches:$patches){factSheet{...BaseFactSheet}}
+      }
+    `
+    businessCapabilities = await Promise.all(businessCapabilities
+      .map(businessCapability => this.lx.executeGraphQL(mutation, { input: { name: businessCapability.name, type: 'BusinessCapability' } }).then(res => res.op.factSheet)))
+    return businessCapabilities
   }
+
 }
