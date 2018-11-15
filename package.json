@@ -10,7 +10,7 @@
     "lint": "eslint --ext .js,.vue src",
     "build": "node build/build.js",
     "upload": "cross-env UPLOAD_TO_LEANIX=true npm run build",
-    "setupDevWorkspace": "./node_modules/.bin/mocha test/setupDevWorkspace.js --require babel-register --timeout 999999 --colors"
+    "setupDemoWorkspace": "./node_modules/.bin/mocha test/setupDemoWorkspace.js --require babel-register --timeout 999999 --colors"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^1.2.8",

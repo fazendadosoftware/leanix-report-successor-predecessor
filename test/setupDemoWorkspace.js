@@ -4,7 +4,7 @@ const ProgressBar = require('progress')
 const lxr = require('../lxr.json')
 const leanixjs = require('leanix-js')
 
-const dataset = require('./devDataset.json')
+const dataset = require('./devDataset')
 
 const { Authenticator, GraphQLClient } = leanixjs
 const authenticator = new Authenticator(lxr.host, lxr.apitoken)
@@ -13,8 +13,8 @@ const graphql = new GraphQLClient(authenticator)
 const queries = new Queries(graphql)
 
 describe('The queries', () => {
-  let tagGroup
-  let businessCapabilities
+  let { tagGroup, businessCapabilities, applications } = dataset
+
   before(async () => {
     await authenticator.start()
   })
@@ -60,8 +60,8 @@ describe('The queries', () => {
       tagGroup = await queries.createTransitionPhaseTagGroupAndTags(dataset.tagGroup)
       assert.isObject(tagGroup)
       assert.isString(tagGroup.id)
-      assert.isArray(tagGroup.tags)
-      assert.lengthOf(tagGroup.tags, dataset.tagGroup.tags.length)
+      assert.isObject(tagGroup.tags)
+      assert.hasAllKeys(tagGroup.tags, dataset.tagGroup.tags.map(tag => tag.name))
     } catch (err) {
       assert.isNull(err)
     }
@@ -69,10 +69,18 @@ describe('The queries', () => {
 
   it('should create the business capabilities in the workspace', async () => {
     try {
-      businessCapabilities = await queries.createBusinessCapabilities(dataset.businessCapabilities)
+      businessCapabilities = await queries.createBusinessCapabilities(businessCapabilities)
       businessCapabilities = businessCapabilities.reduce((accumulator, bc) => { accumulator[bc.name] = bc; return accumulator }, {})
       assert.isObject(businessCapabilities)
       assert.hasAllKeys(businessCapabilities, dataset.businessCapabilities.map(bc => bc.name))
+    } catch (err) {
+      assert.isNull(err)
+    }
+  })
+
+  it('should create the applications in the workspace', async () => {
+    try {
+      await queries.createDemoApplications(applications)
     } catch (err) {
       assert.isNull(err)
     }

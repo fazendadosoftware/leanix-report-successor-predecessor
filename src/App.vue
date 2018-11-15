@@ -9,6 +9,10 @@
           <font-awesome-icon :icon="physics ? 'toggle-on' : 'toggle-off'" :style="{color: physics ? 'green' : 'red'}"/>
           Physics
         </div>
+        <div class="btn btn-default" :key="'reload'" @click="loadDatasetFromWorkspace">
+          <font-awesome-icon icon="sync-alt"/>
+          Reload
+        </div>
       </transition-group>
     </div>
     <div class="hover-container" v-if="hoveredNode">
@@ -19,8 +23,8 @@
 </template>
 
 <script>
+import Fuse from 'fuse.js'
 import { DataSet, Network } from 'vis'
-import NetworkLegend from './components/NetworkLegend'
 import 'vis/dist/vis-network.min.css'
 
 const labels = [
@@ -31,7 +35,6 @@ const labels = [
 
 export default {
   name: 'App',
-  components: { NetworkLegend },
   dataset: require('../test/dataset.json'),
   nodeWidth: 150,
   levelSeparation: 350,
@@ -220,15 +223,83 @@ export default {
           ctx.stroke()
         }
       })
+    },
+    async loadDatasetFromWorkspace () {
+      const tagGroupSeachTerm = 'transition phase'
+
+      const fetchTagGroupQuery = `
+        fragment Tag on Tag {id name color status}
+
+        fragment TagGroup on TagGroup {
+          id name shortName description mode mandatory restrictToFactSheetTypes
+          tags{asList{...Tag}}
+        }
+
+        {op:allTagGroups{edges{node{...TagGroup}}}}
+      `
+
+      const sortByName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+
+      const tagGroup = await this.$lx.executeGraphQL(fetchTagGroupQuery)
+        .then(res => {
+          const tagGroups = res.op.edges
+            .map(edge => edge.node)
+            .filter(node => !node.restrictToFactSheetTypes.length || node.restrictToFactSheetTypes.indexOf('Application') > -1)
+
+          const fuse = new Fuse(tagGroups, { shouldSort: true, threshold: 0.2, keys: ['name'] })
+          const results = fuse.search(tagGroupSeachTerm)
+          // if (!results.length) { throw Error(`could not find tagGroup "${tagGroupSeachTerm}"`) }
+          if (!results.length) return
+          const tagGroup = results[0]
+          tagGroup.tags = tagGroup.tags.asList.sort(sortByName) // sort tags by name
+          return tagGroup
+        })
+
+      const tagHierarchy = tagGroup.tags.map(tag => tag.id)
+      const fetchApplicationsQuery = `
+        {op:allFactSheets(factSheetType:Application)
+          {
+            edges{
+              node{
+                id name tags {id name color}
+                ...on Application{
+                  successors:relToSuccessor{edges{node{factSheet{id}}}}
+                  businessCapabilities:relApplicationToBusinessCapability{edges{node{factSheet{id}}}}
+                }
+            }
+          }
+        }
+      }`
+      const applications = await this.$lx.executeGraphQL(fetchApplicationsQuery)
+        .then(res => res.op.edges.map(edge => edge.node).reduce((accumulator, application) => { return { ...accumulator, [application.id]: application } }, {}))
+
+      const dataset = Object.values(applications)
+        .reduce((accumulator, application) => {
+          // const successors = application.successors.edges.map(edge => edge.node.factSheet.id)
+          const businessCapabilities = application.businessCapabilities.edges.map(edge => edge.node.factSheet.id)
+
+          const tags = application.tags || []
+          const levels = tags.map(tag => tagHierarchy.indexOf(tag.id))
+          const nodes = businessCapabilities
+            .map(bc => levels.map(level => { return { ...application, group: bc, level, label: application.name, id: `${application.id}:${level}:${bc}` } }))
+            .reduce((accumulator, node) => Array.from([...accumulator, ...node]))
+
+          accumulator.nodes = Array.from([...accumulator.nodes, ...nodes])
+          return accumulator
+        }, { nodes: [], edges: [] })
+      return dataset
     }
   },
-  mounted () {
+  async mounted () {
     this.$options.nodes = new DataSet(this.$options.dataset.nodes.map(node => { return { ...node, label: node.title, shape: 'box' } }))
     this.$options.edges = new DataSet(this.$options.dataset.edges.map(edge => { return { ...edge } }))
     this.$lx.init()
       .then(setup => {
         this.$lx.ready({})
       })
+    const { nodes, edges } = await this.loadDatasetFromWorkspace()
+    this.$options.nodes = nodes
+    this.$options.edges = edges
     this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
     /*
     this.network.on('selectNode', params => {
@@ -256,11 +327,6 @@ export default {
     })
 
     this.$options.network.on('beforeDrawing', this.drawOverlay)
-
-    setTimeout(() => {
-      console.log('redrawing')
-      this.$options.network.redraw()
-    }, 5000)
 
     /*
     this.$options.network.on('zoom', ({ direction, scale, pointer }) => {
