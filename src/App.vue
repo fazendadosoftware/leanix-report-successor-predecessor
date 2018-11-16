@@ -5,12 +5,8 @@
     </div>
     <div class="actions-container">
       <transition-group name="fade" class="btn-group">
-        <div class="btn btn-default" :key="'physics'" @click="physics = !physics">
-          <font-awesome-icon :icon="physics ? 'toggle-on' : 'toggle-off'" :style="{color: physics ? 'green' : 'red'}"/>
-          Physics
-        </div>
-        <div class="btn btn-default" :key="'reload'" @click="refreshNetwork">
-          <font-awesome-icon icon="sync-alt"/>
+        <div class="btn btn-default" :key="'reload'" @click="refreshNetwork(true)">
+          <font-awesome-icon icon="sync-alt" :spin="loading"/>
           Reload
         </div>
       </transition-group>
@@ -47,6 +43,7 @@ export default {
   network: undefined,
   data () {
     return {
+      loading: false,
       hoveredNode: undefined,
       businessCapabilities: [
         { name: 'Fleet Management', bgColor: '#f44336' },
@@ -134,10 +131,10 @@ export default {
     }
   },
   methods: {
-    async refreshNetwork () {
-      this.$lx.showSpinner()
+    async refreshNetwork (spin) {
+      spin ? this.loading = true : this.$lx.showSpinner()
       const { nodes, edges, groups } = await this.loadDatasetFromWorkspace()
-      this.$lx.hideSpinner()
+      spin ? this.loading = false : this.$lx.hideSpinner()
 
       if (this.$options.network) this.$options.network.destroy()
       delete this.$options.network
