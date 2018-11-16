@@ -18,6 +18,10 @@ module.exports = {
   applications: [
     { name: 'Application A', businessCapabilities: ['BC A'], tags: ['1. Baseline', '2. Transition', '3. Target'], relToSuccessor: [] },
     { name: 'Application B', businessCapabilities: ['BC A'], tags: ['1. Baseline', '2. Transition'], relToSuccessor: ['Application A'] },
-    { name: 'Application C', businessCapabilities: ['BC A'], tags: ['1. Baseline'], relToSuccessor: ['Application B'] }
+    { name: 'Application C', businessCapabilities: ['BC A'], tags: ['1. Baseline'], relToSuccessor: ['Application B'] },
+
+    { name: 'Application D', businessCapabilities: ['BC B'], tags: ['1. Baseline', '2. Transition', '3. Target'], relToSuccessor: [] },
+    { name: 'Application E', businessCapabilities: ['BC B'], tags: ['1. Baseline', '2. Transition'], relToSuccessor: ['Application D'] },
+    { name: 'Application F', businessCapabilities: ['BC B'], tags: ['1. Baseline'], relToSuccessor: ['Application E'] }
   ]
 }

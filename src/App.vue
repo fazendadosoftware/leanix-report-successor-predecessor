@@ -9,7 +9,7 @@
           <font-awesome-icon :icon="physics ? 'toggle-on' : 'toggle-off'" :style="{color: physics ? 'green' : 'red'}"/>
           Physics
         </div>
-        <div class="btn btn-default" :key="'reload'" @click="loadDatasetFromWorkspace">
+        <div class="btn btn-default" :key="'reload'" @click="refreshNetwork">
           <font-awesome-icon icon="sync-alt"/>
           Reload
         </div>
@@ -24,13 +24,15 @@
 
 <script>
 import Fuse from 'fuse.js'
-import { DataSet, Network } from 'vis'
+import { Network } from 'vis'
 import 'vis/dist/vis-network.min.css'
 
 const labels = [
   { label: 'Baseline', color: 'red' },
   { label: 'Transition', color: 'green' },
   { label: 'Target', color: 'blue' }
+  // { label: 'Level5' },
+  // { label: 'Level 5' }
 ]
 
 export default {
@@ -55,7 +57,12 @@ export default {
       ],
       zoomLimit: 1,
       options: {
-        interaction: { navigationButtons: true, hover: true, selectable: true },
+        interaction: {
+          dragNodes: false,
+          navigationButtons: true,
+          hover: false,
+          selectable: false
+        },
         layout: {
           hierarchical: {
             enabled: true,
@@ -127,10 +134,38 @@ export default {
     }
   },
   methods: {
+    async refreshNetwork () {
+      this.$lx.showSpinner()
+      const { nodes, edges, groups } = await this.loadDatasetFromWorkspace()
+      this.$lx.hideSpinner()
+
+      if (this.$options.network) this.$options.network.destroy()
+      delete this.$options.network
+
+      this.options.groups = groups
+      this.$options.nodes = nodes
+      this.$options.edges = edges
+
+      this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
+      this.$options.network.on('hoverNode', params => {
+        if (this.timeout) clearTimeout(this.timeout)
+        delete this.timeout
+        const nodeID = params.node
+        this.hoveredNode = this.$options.network.body.data.nodes.get(nodeID) || nodeID
+      })
+
+      this.$options.network.on('blurNode', params => {
+        this.timeout = setTimeout(() => {
+          this.hoveredNode = undefined
+        }, 1000)
+      })
+
+      this.$options.network.on('beforeDrawing', this.drawOverlay)
+    },
     drawOverlay (ctx) {
       const { levelSeparation, nodeSpacing, treeSpacing } = this.options.layout.hierarchical
 
-      const nodes = this.$options.dataset.nodes
+      const nodes = this.$options.nodes
         .reduce((accumulator, node) => {
           if (!accumulator[node.group]) accumulator[node.group] = []
           accumulator[node.group].push(node.id)
@@ -184,7 +219,7 @@ export default {
 
           // Draw legend for business capability
           ctx.beginPath()
-          ctx.font = '24px Helvetica'
+          ctx.font = '18px Helvetica'
           ctx.fillStyle = 'black'
           ctx.fillText(BC, x, y)
           ctx.beginPath()
@@ -197,12 +232,13 @@ export default {
           ctx.moveTo(startX, bottomY)
           ctx.lineTo(endX, bottomY)
           ctx.stroke()
+
           // Add phases to the bottom
           labels.forEach((label, idx, labels) => {
             const paddingX = 10
             const paddingY = 10
             ctx.beginPath()
-            ctx.font = 'italic 16px Helvetica'
+            ctx.font = 'bold 12px Helvetica'
             const x = (idx - 0.5) * levelSeparation - ctx.measureText(label.label).width - paddingX
             const y = bottomY - paddingY
             ctx.fillText(label.label, x, y)
@@ -273,34 +309,89 @@ export default {
       const applications = await this.$lx.executeGraphQL(fetchApplicationsQuery)
         .then(res => res.op.edges.map(edge => edge.node).reduce((accumulator, application) => { return { ...accumulator, [application.id]: application } }, {}))
 
-      const dataset = Object.values(applications)
+      const nodes = Object.values(applications)
         .reduce((accumulator, application) => {
-          // const successors = application.successors.edges.map(edge => edge.node.factSheet.id)
           const businessCapabilities = application.businessCapabilities.edges.map(edge => edge.node.factSheet.id)
-
+          const successors = application.successors.edges.map(edge => edge.node.factSheet.id)
           const tags = application.tags || []
           const levels = tags.map(tag => tagHierarchy.indexOf(tag.id))
           const nodes = businessCapabilities
-            .map(bc => levels.map(level => { return { ...application, group: bc, level, label: application.name, id: `${application.id}:${level}:${bc}` } }))
+            .map(bc => levels.map(level => {
+              delete application.businessCapabilities
+              delete application.tags
+              return {
+                ...application,
+                group: bc,
+                level,
+                successors,
+                label: application.name,
+                id: `${bc}:${application.id}:${level}`,
+                factSheetId: application.id
+              }
+            }))
             .reduce((accumulator, node) => Array.from([...accumulator, ...node]))
 
-          accumulator.nodes = Array.from([...accumulator.nodes, ...nodes])
+          return Array.from([...accumulator, ...nodes])
+        }, [])
+
+      const nodeIDs = nodes.map(node => node.id)
+
+      const edges = nodes
+        .reduce((accumulator, node, idx, nodes) => {
+          const successorTags = nodes
+            .filter(_node => _node.group === node.group && _node.factSheetId === node.factSheetId && _node.level === node.level + 1)
+            .map(_node => { return { from: node.id, to: _node.id, arrow: 'to' } })
+          const successorRelations = node.successors
+            .filter(successorFactSheetId => nodeIDs.indexOf(`${node.group}:${successorFactSheetId}:${node.level + 1}`))
+            .map(successorFactSheetId => { return { from: node.id, to: `${node.group}:${successorFactSheetId}:${node.level + 1}` } })
+
+          return Array.from([...accumulator, ...successorTags, ...successorRelations])
+        }, [])
+
+      const groupOptions = [
+        { background: '#f44336', color: '#ffffff' },
+        { background: '#e91e63', color: '#ffffff' },
+        { background: '#9c27b0', color: '#ffffff' },
+        { background: '#673ab7', color: '#ffffff' }
+      ]
+
+      const groups = nodes
+        .reduce((accumulator, node) => Array.from([...new Set([...accumulator, node.group])]), [])
+        .reduce((accumulator, group, idx) => {
+          const _group = groupOptions[idx % groupOptions.length]
+
+          accumulator[group] = {
+            shape: 'box',
+            borderWidth: 1,
+            borderWidthSelected: 1,
+            color: {
+              border: 'black',
+              background: _group.background,
+              // highlight: { border: 'black', background: 'green' },
+              hover: { border: 'black', background: '#78909c' }
+            },
+            font: { face: 'Helvetica', color: _group.color, size: 13 },
+            shapeProperties: { borderRadius: 4 },
+            widthConstraint: { minimum: 150, maximum: 150 },
+            heightConstraint: { minimum: 40 },
+            labelHighlightBold: false
+          }
           return accumulator
-        }, { nodes: [], edges: [] })
+        }, {})
+      const dataset = { nodes, edges, groups }
       return dataset
     }
   },
   async mounted () {
-    this.$options.nodes = new DataSet(this.$options.dataset.nodes.map(node => { return { ...node, label: node.title, shape: 'box' } }))
-    this.$options.edges = new DataSet(this.$options.dataset.edges.map(edge => { return { ...edge } }))
+    // this.$options.nodes = new DataSet(this.$options.dataset.nodes.map(node => { return { ...node, label: node.title, shape: 'box' } }))
+    // this.$options.edges = new DataSet(this.$options.dataset.edges.map(edge => { return { ...edge } }))
     this.$lx.init()
       .then(setup => {
         this.$lx.ready({})
       })
-    const { nodes, edges } = await this.loadDatasetFromWorkspace()
-    this.$options.nodes = nodes
-    this.$options.edges = edges
-    this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
+
+    this.refreshNetwork()
+    // this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
     /*
     this.network.on('selectNode', params => {
       if (params.nodes.length === 1) {
@@ -312,21 +403,6 @@ export default {
       }
     })
     */
-
-    this.$options.network.on('hoverNode', params => {
-      if (this.timeout) clearTimeout(this.timeout)
-      delete this.timeout
-      const nodeID = params.node
-      this.hoveredNode = this.$options.network.body.data.nodes.get(nodeID) || nodeID
-    })
-
-    this.$options.network.on('blurNode', params => {
-      this.timeout = setTimeout(() => {
-        this.hoveredNode = undefined
-      }, 1000)
-    })
-
-    this.$options.network.on('beforeDrawing', this.drawOverlay)
 
     /*
     this.$options.network.on('zoom', ({ direction, scale, pointer }) => {
