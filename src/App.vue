@@ -53,15 +53,14 @@ export default {
             sortMethod: 'directed',
             levelSeparation: 350,
             nodeSpacing: 100,
-            treeSpacing: 200
+            treeSpacing: 100
           }
         },
         physics: {
           enabled: true,
-          repulsion: {
-            nodeDistance: 10,
-            centralGravity: 0,
-            springConstant: 1
+          hierarchicalRepulsion: {
+            nodeDistance: 100,
+            centralGravity: 0.1
           }
         },
         nodes: {
