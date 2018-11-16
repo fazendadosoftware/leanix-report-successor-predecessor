@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    { "id": 1, "title": "SF", "level": 1, "group": "BC A" },
+    { "id": 2, "title": "SF", "level": 2, "group": "BC A" },
+    { "id": 3, "title": "SF", "level": 3, "group": "BC A" },
+    { "id": 4, "title": "SAP CRM", "level": 1, "group": "BC A" },
+    { "id": 5, "title": "ORACLE CRM", "level": 1, "group": "BC A" },
+    { "id": 6, "title": "ORACLE CRM", "level": 2, "group": "BC A" },
+
+    { "id": 10, "title": "SF2", "level": 1, "group": "BC B" },
+    { "id": 11, "title": "SF2", "level": 2, "group": "BC B" },
+    { "id": 12, "title": "SF3", "level": 3, "group": "BC B" },
+    { "id": 13, "title": "SAP CRM", "level": 1, "group": "BC B" },
+    { "id": 14, "title": "ORACLE CRM", "level": 1, "group": "BC B" },
+    { "id": 15, "title": "ORACLE CRM", "level": 2, "group": "BC B" }
+  ],
+  "edges": [
+    {"from": 1, "to": 2},
+    {"from": 2, "to": 3},
+    {"from": 4, "to": 2},
+    {"from": 5, "to": 6},
+    {"from": 6, "to": 3},
+
+    {"from": 10, "to": 11},
+    {"from": 11, "to": 12},
+    {"from": 13, "to": 11},
+    {"from": 14, "to": 15},
+    {"from": 15, "to": 12}
+  ]
+}
