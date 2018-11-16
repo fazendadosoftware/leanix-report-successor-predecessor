@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <div class="logo">
-      <img width="200" src="./assets/logo.svg">
+      <img width="300" src="../static/DEL_PRI_PMS368_weiss_neu.svg">
     </div>
     <div class="actions-container">
       <transition-group name="fade" class="btn-group">
@@ -456,11 +456,12 @@ export default {
   .logo
     position fixed
     top 2em
-    right 6em
-    width 200px
-    border-radius 60px
+    right 70px
+    width 300px
+    border-radius 10px
     z-index 9999
     background white
+    padding 0.5em
 
   .actions-container
     position absolute
