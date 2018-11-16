@@ -5,12 +5,6 @@
     </div>
     <div class="actions-container">
       <transition-group name="fade" class="btn-group">
-        <!--
-        <div class="btn btn-default" :key="'fit'" @click="fitNetworkToScreen">
-          <font-awesome-icon icon="expand"/>
-          Fit to Screen
-        </div>
-        -->
         <div class="btn btn-default" :key="'reload'" @click="refreshNetwork(true)">
           <font-awesome-icon icon="sync-alt" :spin="loading"/>
           Reload
@@ -59,7 +53,15 @@ export default {
             sortMethod: 'directed',
             levelSeparation: 350,
             nodeSpacing: 100,
-            treeSpacing: 100
+            treeSpacing: 200
+          }
+        },
+        physics: {
+          enabled: true,
+          repulsion: {
+            nodeDistance: 10,
+            centralGravity: 0,
+            springConstant: 1
           }
         },
         nodes: {
@@ -82,9 +84,6 @@ export default {
           arrows: { to: { enabled: true, scaleFactor: 0.7 } },
           shadow: { enabled: true, color: '#424242', x: 3, y: 3, size: 15 },
           smooth: { enabled: false }
-        },
-        physics: {
-          enabled: false
         }
       }
     }
@@ -134,7 +133,7 @@ export default {
       const gridColor = '#e0e0e0' // grey-200
       const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
 
-      const { levelSeparation, nodeSpacing, treeSpacing } = this.options.layout.hierarchical
+      const { levelSeparation, nodeSpacing } = this.options.layout.hierarchical
 
       const nodes = this.$options.nodes
         .reduce((accumulator, node) => {
@@ -177,14 +176,15 @@ export default {
       delete bboxes._all
 
       const [originX, originY, width, height] = bbox
-      bbox = [originX - levelSeparation / 2, originY - nodeSpacing, width + levelSeparation, height + nodeSpacing * 2] // Add padding to the outer container
+      // bbox = [originX - levelSeparation / 2, originY - nodeSpacing, width + levelSeparation, height + nodeSpacing * 2] // Add padding to the outer container
+      bbox = [originX - levelSeparation / 2, originY - nodeSpacing / 2, width + levelSeparation, height + nodeSpacing]
 
       // Add vertical separator for phases
       let _width
       let endX
       labels.forEach((label, idx, labels) => {
         ctx.fillStyle = legendColor
-        const x = (-0.5 + idx) * levelSeparation
+        const x = (-1.5 + idx) * levelSeparation
         ctx.moveTo(x, bbox[1])
         const height = bbox[1] + bbox[3]
         ctx.lineTo(x, height)
@@ -220,7 +220,7 @@ export default {
 
           // Add horizontal separators between business capabilities
           ctx.strokeStyle = gridColor
-          const bottomY = bbox[3] + treeSpacing
+          const bottomY = bbox[3] + nodeSpacing / 2
           const startX = bbox[0] - levelSeparation / 2
           // const endX = bbox[2] + levelSeparation / 2
           ctx.moveTo(startX, bottomY)
@@ -232,7 +232,7 @@ export default {
             const paddingX = 10
             const paddingY = 10
             ctx.font = 'bold 12px Helvetica'
-            const x = (idx - 0.5) * levelSeparation - ctx.measureText(label).width - paddingX
+            const x = (idx - 1.5) * levelSeparation - ctx.measureText(label).width - paddingX
             const y = bottomY - paddingY
             ctx.fillText(label, x, y)
           })
