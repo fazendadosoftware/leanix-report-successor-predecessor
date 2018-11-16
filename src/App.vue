@@ -152,6 +152,8 @@ export default {
       this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
     drawOverlay (ctx) {
+      const legendColor = '#616161' // grey-700
+      const gridColor = '#e0e0e0' // grey-200
       const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
 
       const { levelSeparation, nodeSpacing, treeSpacing } = this.options.layout.hierarchical
@@ -203,12 +205,12 @@ export default {
       let _width
       let endX
       labels.forEach((label, idx, labels) => {
-        ctx.fillStyle = label.color
+        ctx.fillStyle = legendColor
         const x = (-0.5 + idx) * levelSeparation
         ctx.moveTo(x, bbox[1])
         const height = bbox[1] + bbox[3]
         ctx.lineTo(x, height)
-        ctx.strokeStyle = '#bdbdbd'
+        ctx.strokeStyle = gridColor
         ctx.stroke()
         if (idx === 0) _width = x
         else if (idx === labels.length - 1) {
@@ -222,14 +224,14 @@ export default {
       this.bbox = bbox
 
       // Draw the outer container
-      ctx.strokeStyle = '#bdbdbd'
+      ctx.strokeStyle = gridColor
       ctx.strokeRect(...bbox)
 
       Object.entries(bboxes)
         .forEach(([BC, bbox], idx) => {
           // Draw legend for business capability
           ctx.font = '22px Helvetica'
-          ctx.fillStyle = 'black'
+          ctx.fillStyle = legendColor
 
           const label = this.businessCapabilities.hasOwnProperty(BC) ? this.businessCapabilities[BC].name : BC
 
@@ -239,7 +241,7 @@ export default {
           ctx.fillText(label, x, y)
 
           // Add horizontal separators between business capabilities
-          ctx.strokeStyle = '#bdbdbd'
+          ctx.strokeStyle = gridColor
           const bottomY = bbox[3] + treeSpacing
           const startX = bbox[0] - levelSeparation / 2
           // const endX = bbox[2] + levelSeparation / 2
@@ -255,7 +257,6 @@ export default {
             const x = (idx - 0.5) * levelSeparation - ctx.measureText(label).width - paddingX
             const y = bottomY - paddingY
             ctx.fillText(label, x, y)
-            ctx.strokeStyle = '#bdbdbd'
           })
         })
     },
@@ -292,7 +293,7 @@ export default {
 
       const tagHierarchy = tagGroup.tags.map(tag => tag.id)
       const fetchApplicationsQuery = `
-        {op:allFactSheets(factSheetType:Application)
+        query($filter:FilterInput){op:allFactSheets(filter:$filter)
           {
             edges{
               node{
@@ -305,8 +306,16 @@ export default {
           }
         }
       }`
-      const applications = await this.$lx.executeGraphQL(fetchApplicationsQuery)
+      const applications = await this.$lx.executeGraphQL(fetchApplicationsQuery, { filter: this.filter })
         .then(res => res.op.edges.map(edge => edge.node).reduce((accumulator, application) => { return { ...accumulator, [application.id]: application } }, {}))
+
+      const allowedBusinessCapabilities = this.filter.facetFilters
+        .filter(facet => facet.facetKey === 'relApplicationToBusinessCapability')
+        .reduce((accumulator, facet) => Array.from(new Set([...accumulator, ...facet.keys])), [])
+
+      const allowedTags = this.filter.facetFilters
+        .filter(facet => facet.facetKey === tagGroup.name)
+        .reduce((accumulator, facet) => Array.from(new Set([...accumulator, ...facet.keys])), [])
 
       const businessCapabilities = Object.values(applications)
         .reduce((accumulator, application) => {
@@ -320,9 +329,15 @@ export default {
 
       const nodes = Object.values(applications)
         .reduce((accumulator, application) => {
-          const businessCapabilities = application.businessCapabilities.edges.map(edge => edge.node.factSheet.id)
+          const businessCapabilities = application.businessCapabilities.edges
+            .map(edge => edge.node.factSheet.id)
+            .filter(bcId => allowedBusinessCapabilities.length ? allowedBusinessCapabilities.indexOf(bcId) > -1 : true)
+
           const successors = application.successors.edges.map(edge => edge.node.factSheet.id)
-          const tags = application.tags || []
+
+          const tags = (application.tags || [])
+            .filter(tag => allowedTags.length ? allowedTags.indexOf(tag.id) > -1 : true)
+
           const levels = tags.map(tag => tagHierarchy.indexOf(tag.id))
           const nodes = businessCapabilities
             .map(bc => levels.map(level => {
