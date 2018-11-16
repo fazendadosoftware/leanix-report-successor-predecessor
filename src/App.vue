@@ -84,29 +84,7 @@ export default {
           smooth: { enabled: false }
         },
         physics: {
-          enabled: true
-        },
-        groups: {
-          'BC A': {
-            color: {
-              background: 'red',
-              hover: {
-                border: 'black',
-                background: 'black'
-              }
-            },
-            font: { color: 'white' }
-          },
-          'BC B': {
-            color: {
-              background: 'blue',
-              hover: {
-                border: 'black',
-                background: 'black'
-              }
-            },
-            font: { color: 'white' }
-          }
+          enabled: false
         }
       }
     }
