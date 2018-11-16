@@ -25,6 +25,7 @@
 </template>
 
 <script>
+import { getReportConfiguration } from './helpers/leanixReporting'
 import Fuse from 'fuse.js'
 import { Network } from 'vis'
 import 'vis/dist/vis-network.min.css'
@@ -38,17 +39,11 @@ export default {
   network: undefined,
   data () {
     return {
+      filter: {},
       bbox: [0, 0, 0, 0], // network bbox [originX, originY, width, height]
       tagGroup: undefined,
       loading: false,
       hoveredNode: undefined,
-      businessCapabilities: [
-        { name: 'Fleet Management', bgColor: '#f44336' },
-        { name: 'Accounting & Billing', bgColor: '#9c27b0' },
-        { name: 'Legal', bgColor: '#673ab7' },
-        { name: 'Purchasing', bgColor: '#3f51b5' },
-        { name: 'Real State Management', bgColor: '#2196f3' }
-      ],
       zoomLimit: 1,
       options: {
         interaction: {
@@ -138,6 +133,8 @@ export default {
       this.$options.edges = edges
 
       this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
+
+      /*
       this.$options.network.on('hoverNode', params => {
         if (this.timeout) clearTimeout(this.timeout)
         delete this.timeout
@@ -150,6 +147,7 @@ export default {
           this.hoveredNode = undefined
         }, 1000)
       })
+      */
 
       this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
@@ -391,17 +389,22 @@ export default {
         }, {})
       const dataset = { nodes, edges, groups, tagGroup, businessCapabilities }
       return dataset
+    },
+    setFilter (filter) {
+      this.filter = {
+        facetFilters: filter.facets,
+        fullTextSearch: filter.fullTextSearchTerm,
+        ids: filter.directHits.map(hit => hit.id)
+      }
+      this.refreshNetwork()
     }
   },
   async mounted () {
-    // this.$options.nodes = new DataSet(this.$options.dataset.nodes.map(node => { return { ...node, label: node.title, shape: 'box' } }))
-    // this.$options.edges = new DataSet(this.$options.dataset.edges.map(edge => { return { ...edge } }))
     this.$lx.init()
       .then(setup => {
-        this.$lx.ready({})
+        const config = getReportConfiguration({setup, facetFiltersChangedCallback: this.setFilter})
+        this.$lx.ready(config)
       })
-
-    this.refreshNetwork()
     // this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
     /*
     this.network.on('selectNode', params => {
