@@ -5,6 +5,12 @@
     </div>
     <div class="actions-container">
       <transition-group name="fade" class="btn-group">
+        <!--
+        <div class="btn btn-default" :key="'fit'" @click="fitNetworkToScreen">
+          <font-awesome-icon icon="expand"/>
+          Fit to Screen
+        </div>
+        -->
         <div class="btn btn-default" :key="'reload'" @click="refreshNetwork(true)">
           <font-awesome-icon icon="sync-alt" :spin="loading"/>
           Reload
@@ -23,19 +29,8 @@ import Fuse from 'fuse.js'
 import { Network } from 'vis'
 import 'vis/dist/vis-network.min.css'
 
-const labels = [
-  { label: 'Baseline', color: 'red' },
-  { label: 'Transition', color: 'green' },
-  { label: 'Target', color: 'blue' }
-  // { label: 'Level5' },
-  // { label: 'Level 5' }
-]
-
 export default {
   name: 'App',
-  dataset: require('../test/dataset.json'),
-  nodeWidth: 150,
-  levelSeparation: 350,
   // non-tracked variable, available at this.$options.nodes
   nodes: undefined,
   // non-tracked variable, available at this.$options.edges
@@ -43,6 +38,8 @@ export default {
   network: undefined,
   data () {
     return {
+      bbox: [0, 0, 0, 0], // network bbox [originX, originY, width, height]
+      tagGroup: undefined,
       loading: false,
       hoveredNode: undefined,
       businessCapabilities: [
@@ -120,25 +117,22 @@ export default {
     }
   },
   computed: {
-    physics: {
-      get () {
-        return this.options.physics.enabled
-      },
-      set (physics) {
-        this.options.physics.enabled = physics
-        this.$options.network.setOptions({ physics })
-      }
+    tags () {
+      return this.tagGroup && this.tagGroup.tags ? this.tagGroup.tags : []
     }
   },
   methods: {
     async refreshNetwork (spin) {
       spin ? this.loading = true : this.$lx.showSpinner()
-      const { nodes, edges, groups } = await this.loadDatasetFromWorkspace()
+      const { nodes, edges, groups, tagGroup, businessCapabilities } = await this.loadDatasetFromWorkspace()
       spin ? this.loading = false : this.$lx.hideSpinner()
+
+      this.businessCapabilities = businessCapabilities
 
       if (this.$options.network) this.$options.network.destroy()
       delete this.$options.network
 
+      this.tagGroup = tagGroup
       this.options.groups = groups
       this.$options.nodes = nodes
       this.$options.edges = edges
@@ -160,6 +154,8 @@ export default {
       this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
     drawOverlay (ctx) {
+      const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
+
       const { levelSeparation, nodeSpacing, treeSpacing } = this.options.layout.hierarchical
 
       const nodes = this.$options.nodes
@@ -168,6 +164,7 @@ export default {
           accumulator[node.group].push(node.id)
           return accumulator
         }, {})
+
       const bboxes = Object.entries(nodes)
         .reduce((accumulator, [bc, ids]) => {
           const positions = this.$options.network.getPositions(ids)
@@ -204,28 +201,50 @@ export default {
       const [originX, originY, width, height] = bbox
       bbox = [originX - levelSeparation / 2, originY - nodeSpacing, width + levelSeparation, height + nodeSpacing * 2] // Add padding to the outer container
 
+      // Add vertical separator for phases
+      let _width
+      let endX
+      labels.forEach((label, idx, labels) => {
+        ctx.fillStyle = label.color
+        const x = (-0.5 + idx) * levelSeparation
+        ctx.moveTo(x, bbox[1])
+        const height = bbox[1] + bbox[3]
+        ctx.lineTo(x, height)
+        ctx.strokeStyle = '#bdbdbd'
+        ctx.stroke()
+        if (idx === 0) _width = x
+        else if (idx === labels.length - 1) {
+          _width = x - _width + levelSeparation
+          endX = x
+        }
+      })
+
+      bbox[2] = _width
+
+      this.bbox = bbox
+
       // Draw the outer container
-      ctx.beginPath()
       ctx.strokeStyle = '#bdbdbd'
       ctx.strokeRect(...bbox)
 
       Object.entries(bboxes)
         .forEach(([BC, bbox], idx) => {
-          let x = bbox[0] - levelSeparation
+          // Draw legend for business capability
+          ctx.font = '22px Helvetica'
+          ctx.fillStyle = 'black'
+
+          const label = this.businessCapabilities.hasOwnProperty(BC) ? this.businessCapabilities[BC].name : BC
+
+          let x = bbox[0] - levelSeparation / 2 - ctx.measureText(label).width - 20
           let y = (bbox[1] + bbox[3]) / 2 // Center position for BC Row
 
-          // Draw legend for business capability
-          ctx.beginPath()
-          ctx.font = '18px Helvetica'
-          ctx.fillStyle = 'black'
-          ctx.fillText(BC, x, y)
-          ctx.beginPath()
-          ctx.strokeStyle = '#bdbdbd'
+          ctx.fillText(label, x, y)
 
           // Add horizontal separators between business capabilities
+          ctx.strokeStyle = '#bdbdbd'
           const bottomY = bbox[3] + treeSpacing
           const startX = bbox[0] - levelSeparation / 2
-          const endX = bbox[2] + levelSeparation / 2
+          // const endX = bbox[2] + levelSeparation / 2
           ctx.moveTo(startX, bottomY)
           ctx.lineTo(endX, bottomY)
           ctx.stroke()
@@ -234,28 +253,13 @@ export default {
           labels.forEach((label, idx, labels) => {
             const paddingX = 10
             const paddingY = 10
-            ctx.beginPath()
             ctx.font = 'bold 12px Helvetica'
-            const x = (idx - 0.5) * levelSeparation - ctx.measureText(label.label).width - paddingX
+            const x = (idx - 0.5) * levelSeparation - ctx.measureText(label).width - paddingX
             const y = bottomY - paddingY
-            ctx.fillText(label.label, x, y)
+            ctx.fillText(label, x, y)
             ctx.strokeStyle = '#bdbdbd'
           })
         })
-
-      // Add vertical separator for phases
-      labels.forEach((label, idx, labels) => {
-        if (idx < labels.length - 1) {
-          ctx.fillStyle = label.color
-          ctx.beginPath()
-          const x = (-0.5 + idx) * levelSeparation
-          ctx.moveTo(x, bbox[1])
-          const height = bbox[1] + bbox[3]
-          ctx.lineTo(x, height)
-          ctx.strokeStyle = '#bdbdbd'
-          ctx.stroke()
-        }
-      })
     },
     async loadDatasetFromWorkspace () {
       const tagGroupSeachTerm = 'transition phase'
@@ -297,7 +301,7 @@ export default {
                 id name tags {id name color}
                 ...on Application{
                   successors:relToSuccessor{edges{node{factSheet{id}}}}
-                  businessCapabilities:relApplicationToBusinessCapability{edges{node{factSheet{id}}}}
+                  businessCapabilities:relApplicationToBusinessCapability{edges{node{factSheet{id name}}}}
                 }
             }
           }
@@ -305,6 +309,16 @@ export default {
       }`
       const applications = await this.$lx.executeGraphQL(fetchApplicationsQuery)
         .then(res => res.op.edges.map(edge => edge.node).reduce((accumulator, application) => { return { ...accumulator, [application.id]: application } }, {}))
+
+      const businessCapabilities = Object.values(applications)
+        .reduce((accumulator, application) => {
+          application.businessCapabilities.edges
+            .map(edge => edge.node.factSheet)
+            .forEach(bc => {
+              if (!accumulator.hasOwnProperty(bc.id)) accumulator[bc.id] = { name: bc.name }
+            })
+          return accumulator
+        }, {})
 
       const nodes = Object.values(applications)
         .reduce((accumulator, application) => {
@@ -375,7 +389,7 @@ export default {
           }
           return accumulator
         }, {})
-      const dataset = { nodes, edges, groups }
+      const dataset = { nodes, edges, groups, tagGroup, businessCapabilities }
       return dataset
     }
   },
