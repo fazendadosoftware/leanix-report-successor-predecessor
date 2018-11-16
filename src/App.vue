@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <div class="logo">
-      <img width="300" src="../static/DEL_PRI_PMS368_weiss_neu.svg">
+      <img src="../static/DEL_PRI_PMS368_weiss_neu.svg">
     </div>
     <div class="actions-container">
       <transition-group name="fade" class="btn-group">
@@ -462,6 +462,13 @@ export default {
     z-index 9999
     background white
     padding 0.5em
+    & > img
+      width 300px
+    @media screen and (max-width: 800px)
+      right 60px
+      width 150px
+      & > img
+        width 150px
 
   .actions-container
     position absolute
