@@ -21,7 +21,7 @@
 <script>
 import { getReportConfiguration } from './helpers/leanixReporting'
 import Fuse from 'fuse.js'
-import { Network } from 'vis'
+import { DataSet, Network } from 'vis'
 import 'vis/dist/vis-network.min.css'
 
 export default {
@@ -41,10 +41,10 @@ export default {
       zoomLimit: 1,
       options: {
         interaction: {
-          dragNodes: false,
+          dragNodes: true,
           navigationButtons: true,
           hover: false,
-          selectable: false
+          selectable: true
         },
         layout: {
           hierarchical: {
@@ -53,7 +53,7 @@ export default {
             sortMethod: 'directed',
             levelSeparation: 350,
             nodeSpacing: 100,
-            treeSpacing: 100
+            treeSpacing: 400
           }
         },
         physics: {
@@ -105,10 +105,21 @@ export default {
 
       this.tagGroup = tagGroup
       this.options.groups = groups
-      this.$options.nodes = nodes
-      this.$options.edges = edges
+      this.$options.nodes = new DataSet(nodes)
+      this.$options.edges = new DataSet(edges)
 
       this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
+      // this.clusterAllByBusinessCapability()
+
+      this.$options.network.on('click', properties => {
+        const { nodes } = properties
+        const id = nodes.shift()
+        if (this.$options.network.isCluster(id)) {
+          this.$options.network.openCluster(id)
+        } else {
+          this.clusterByBusinessCapability(id)
+        }
+      })
 
       /*
       this.$options.network.on('hoverNode', params => {
@@ -125,7 +136,22 @@ export default {
       })
       */
 
-      this.$options.network.on('beforeDrawing', this.drawOverlay)
+      // this.$options.network.on('beforeDrawing', this.drawOverlay)
+    },
+    clusterByBusinessCapability (nodeID) {
+      const isCluster = this.$options.network.isCluster(nodeID)
+      console.log('isCluster', isCluster, 'network', this.$options.network)
+    },
+    clusterAllByBusinessCapability () {
+      const groups = this.options.groups
+      Object.keys(groups)
+        .forEach(group => {
+          const clusterNodeProperties = { ...groups[group], level: 0 }
+          this.$options.network.cluster({
+            joinCondition: item => item.group === group,
+            clusterNodeProperties
+          })
+        })
     },
     drawOverlay (ctx) {
       const legendColor = '#616161' // grey-700
@@ -299,12 +325,12 @@ export default {
           application.businessCapabilities.edges
             .map(edge => edge.node.factSheet)
             .forEach(bc => {
-              if (!accumulator.hasOwnProperty(bc.id)) accumulator[bc.id] = { name: bc.name }
+              if (!accumulator.hasOwnProperty(bc.id)) accumulator[bc.id] = bc
             })
           return accumulator
         }, {})
 
-      const nodes = Object.values(applications)
+      let nodes = Object.values(applications)
         .reduce((accumulator, application) => {
           const businessCapabilities = application.businessCapabilities.edges
             .map(edge => edge.node.factSheet.id)
@@ -315,7 +341,7 @@ export default {
           const tags = (application.tags || [])
             .filter(tag => allowedTags.length ? allowedTags.indexOf(tag.id) > -1 : true)
 
-          const levels = tags.map(tag => tagHierarchy.indexOf(tag.id))
+          const levels = tags.map(tag => tagHierarchy.indexOf(tag.id) + 1) // leave Level 0 for BC root node
           const nodes = businessCapabilities
             .map(bc => levels.map(level => {
               delete application.businessCapabilities
@@ -335,18 +361,42 @@ export default {
           return Array.from([...accumulator, ...nodes])
         }, [])
 
+      const bcNodes = Object.values(businessCapabilities)
+        .map(bc => {
+          return {
+            ...bc,
+            label: bc.name,
+            group: `bc:${bc.id}`,
+            level: 0,
+            type: 'BusinessCapability'
+          }
+        })
+
+      nodes = Array.from([...nodes, ...bcNodes])
+
       const nodeIDs = nodes.map(node => node.id)
 
       const edges = nodes
         .reduce((accumulator, node, idx, nodes) => {
+          let rootNodeToApps = []
+          if (node.type === 'BusinessCapability') {
+            rootNodeToApps = Object.values(nodes
+              .filter(_node => _node.group === node.id && _node.id !== node.id)
+              .reduce((accumulator, node) => {
+                if (!accumulator[node.factSheetId] || accumulator[node.factSheetId].level > node.level) accumulator[node.factSheetId] = node
+                return accumulator
+              }, {}))
+              .map(node => { return { from: node.group, to: node.id, arrow: 'to', color: { opacity: 0.3, dashes: true } } })
+          }
           const successorTags = nodes
             .filter(_node => _node.group === node.group && _node.factSheetId === node.factSheetId && _node.level === node.level + 1)
             .map(_node => { return { from: node.id, to: _node.id, arrow: 'to' } })
-          const successorRelations = node.successors
+
+          const successorRelations = (node.successors || [])
             .filter(successorFactSheetId => nodeIDs.indexOf(`${node.group}:${successorFactSheetId}:${node.level + 1}`))
             .map(successorFactSheetId => { return { from: node.id, to: `${node.group}:${successorFactSheetId}:${node.level + 1}` } })
 
-          return Array.from([...accumulator, ...successorTags, ...successorRelations])
+          return Array.from([...accumulator, ...successorTags, ...successorRelations, ...rootNodeToApps])
         }, [])
 
       const groupOptions = [
@@ -356,19 +406,22 @@ export default {
         { background: '#673ab7', color: '#ffffff' }
       ]
 
-      const groups = nodes
+      const appGroups = nodes
+        .filter(node => node.group.split(':')[0] !== 'bc')
         .reduce((accumulator, node) => Array.from([...new Set([...accumulator, node.group])]), [])
         .reduce((accumulator, group, idx) => {
           const _group = groupOptions[idx % groupOptions.length]
+          const groupMetadata = businessCapabilities[group]
 
           accumulator[group] = {
+            ...groupMetadata,
             shape: 'box',
             borderWidth: 1,
             borderWidthSelected: 1,
             color: {
               border: 'black',
               background: _group.background,
-              // highlight: { border: 'black', background: 'green' },
+              highlight: { border: 'black', background: '#78909c' },
               hover: { border: 'black', background: '#78909c' }
             },
             font: { face: 'Helvetica', color: _group.color, size: 13 },
@@ -379,6 +432,36 @@ export default {
           }
           return accumulator
         }, {})
+
+      const bcGroups = nodes
+        .filter(node => node.group.split(':')[0] === 'bc')
+        .reduce((accumulator, node) => Array.from([...new Set([...accumulator, node.group])]), [])
+        .reduce((accumulator, group, idx) => {
+          const _group = groupOptions[idx % groupOptions.length]
+          const groupMetadata = businessCapabilities[group]
+
+          accumulator[group] = {
+            ...groupMetadata,
+            shape: 'ellipsis',
+            size: 40,
+            borderWidth: 1,
+            borderWidthSelected: 1,
+            color: {
+              border: 'black',
+              background: _group.background,
+              highlight: { border: 'black', background: '#78909c' },
+              hover: { border: 'black', background: '#78909c' }
+            },
+            font: { face: 'Helvetica', color: _group.color, size: 18 },
+            shapeProperties: { borderRadius: 4 },
+            widthConstraint: { minimum: 150, maximum: 150 },
+            heightConstraint: { minimum: 40 },
+            labelHighlightBold: false
+          }
+          return accumulator
+        }, {})
+
+      const groups = {...appGroups, ...bcGroups}
       const dataset = { nodes, edges, groups, tagGroup, businessCapabilities }
       return dataset
     },
