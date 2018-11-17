@@ -514,27 +514,22 @@ export default {
     align-items center
 
   .logo
+    $img-width=200px
     position fixed
     top 2em
-    right 70px
-    width 300px
+    left 70px
+    width $img-width
     border-radius 10px
-    z-index 9999
+    // z-index 9999
     background white
     padding 0.5em
     & > img
-      width 300px
+      width $img-width
     @media screen and (max-width: 800px)
       right 60px
       width 150px
       & > img
         width 150px
-
-  .actions-container
-    position absolute
-    top 0
-    left 0
-    noselect
 
   .chart-container
     width calc(100% - 8em)
@@ -545,9 +540,9 @@ export default {
   .actions-container
     position absolute
     top 0
-    left 0
+    right 0
     padding-top 1.5em
-    padding-left 5.5em
+    padding-right 5.5em
     z-index 9999
 
   .hover-container
