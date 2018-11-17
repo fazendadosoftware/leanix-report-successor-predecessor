@@ -41,10 +41,10 @@ export default {
       zoomLimit: 1,
       options: {
         interaction: {
-          dragNodes: false,
+          dragNodes: true,
           navigationButtons: true,
           hover: false,
-          selectable: false
+          selectable: true
         },
         layout: {
           hierarchical: {
@@ -53,7 +53,7 @@ export default {
             sortMethod: 'directed',
             levelSeparation: 350,
             nodeSpacing: 100,
-            treeSpacing: 100
+            treeSpacing: 400
           }
         },
         physics: {
@@ -94,6 +94,10 @@ export default {
   },
   methods: {
     async refreshNetwork (spin) {
+      if (!this.filter.facetFilters) {
+        this.filter = { facetFilters: [{ facetKey: 'FactSheetTypes', keys: [ 'Application' ] }] }
+      }
+
       spin ? this.loading = true : this.$lx.showSpinner()
       const { nodes, edges, groups, tagGroup, businessCapabilities } = await this.loadDatasetFromWorkspace()
       spin ? this.loading = false : this.$lx.hideSpinner()
@@ -109,6 +113,7 @@ export default {
       this.$options.edges = edges
 
       this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
+      // this.clusterAllByBusinessCapability()
 
       /*
       this.$options.network.on('hoverNode', params => {
@@ -127,8 +132,8 @@ export default {
 
       this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
-    drawOverlay (ctx) {
-      const legendColor = '#616161' // grey-700
+    drawOverlay (ctx) { /* eslint-disable */
+      // const legendColor = '#616161' // grey-700
       const gridColor = '#e0e0e0' // grey-200
       const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
 
@@ -142,6 +147,7 @@ export default {
         }, {})
 
       const bboxes = Object.entries(nodes)
+        // .filter(([bc, ids]) => bc.split(':')[0] !== 'bc')
         .reduce((accumulator, [bc, ids]) => {
           const positions = this.$options.network.getPositions(ids)
           const bbox = Object.values(positions)
@@ -176,19 +182,21 @@ export default {
 
       const [originX, originY, width, height] = bbox
       // bbox = [originX - levelSeparation / 2, originY - nodeSpacing, width + levelSeparation, height + nodeSpacing * 2] // Add padding to the outer container
-      bbox = [originX - levelSeparation / 2, originY - nodeSpacing / 2, width + levelSeparation, height + nodeSpacing]
+      bbox = [originX + levelSeparation / 2, originY - nodeSpacing / 2, width + levelSeparation, height + nodeSpacing]
 
       // Add vertical separator for phases
       let _width
       let endX
+
       labels.forEach((label, idx, labels) => {
-        ctx.fillStyle = legendColor
-        const x = (-1.5 + idx) * levelSeparation
-        ctx.moveTo(x, bbox[1])
-        const height = bbox[1] + bbox[3]
-        ctx.lineTo(x, height)
-        ctx.strokeStyle = gridColor
-        ctx.stroke()
+        const x = bbox[0] + (idx + 1) * levelSeparation
+        if (idx < labels.length - 1) {
+          ctx.moveTo(x, bbox[1])
+          const height = bbox[1] + bbox[3]
+          ctx.lineTo(x, height)
+          ctx.strokeStyle = gridColor
+          ctx.stroke()
+        }
         if (idx === 0) _width = x
         else if (idx === labels.length - 1) {
           _width = x - _width + levelSeparation
@@ -202,36 +210,27 @@ export default {
 
       // Draw the outer container
       ctx.strokeStyle = gridColor
+      // ctx.lineWidth = 10
       ctx.strokeRect(...bbox)
 
       Object.entries(bboxes)
-        .forEach(([BC, bbox], idx) => {
-          // Draw legend for business capability
-          ctx.font = '22px Helvetica'
-          ctx.fillStyle = legendColor
-
-          const label = this.businessCapabilities.hasOwnProperty(BC) ? this.businessCapabilities[BC].name : BC
-
-          let x = bbox[0] - levelSeparation / 2 - ctx.measureText(label).width - 20
-          let y = (bbox[1] + bbox[3]) / 2 // Center position for BC Row
-
-          ctx.fillText(label, x, y)
-
-          // Add horizontal separators between business capabilities
-          ctx.strokeStyle = gridColor
+        .filter(([bc, bbox]) => bc.split(':')[0] !== 'bc')
+        .forEach(([BC, bbox], idx, bboxes) => {
+          // Add horizontal separators between business capabilities7
           const bottomY = bbox[3] + nodeSpacing / 2
-          const startX = bbox[0] - levelSeparation / 2
-          // const endX = bbox[2] + levelSeparation / 2
-          ctx.moveTo(startX, bottomY)
-          ctx.lineTo(endX, bottomY)
-          ctx.stroke()
-
+          const startX = this.bbox[0]
+          if (idx < bboxes.length - 1) {
+            ctx.strokeStyle =  gridColor
+            ctx.moveTo(startX, bottomY)
+            ctx.lineTo(endX, bottomY)
+            ctx.stroke()
+          }
           // Add phases to the bottom
           labels.forEach((label, idx, labels) => {
             const paddingX = 10
             const paddingY = 10
             ctx.font = 'bold 12px Helvetica'
-            const x = (idx - 1.5) * levelSeparation - ctx.measureText(label).width - paddingX
+            const x = this.bbox[0] + (idx + 1) * levelSeparation - ctx.measureText(label).width - paddingX
             const y = bottomY - paddingY
             ctx.fillText(label, x, y)
           })
@@ -241,14 +240,10 @@ export default {
       const tagGroupSeachTerm = 'transition phase'
 
       const fetchTagGroupQuery = `
-        fragment Tag on Tag {id name color status}
-
-        fragment TagGroup on TagGroup {
+        {op:allTagGroups{edges{node{
           id name shortName description mode mandatory restrictToFactSheetTypes
-          tags{asList{...Tag}}
-        }
-
-        {op:allTagGroups{edges{node{...TagGroup}}}}
+          tags{asList{id name color status}}
+        }}}}
       `
 
       const sortByName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0
@@ -299,12 +294,12 @@ export default {
           application.businessCapabilities.edges
             .map(edge => edge.node.factSheet)
             .forEach(bc => {
-              if (!accumulator.hasOwnProperty(bc.id)) accumulator[bc.id] = { name: bc.name }
+              if (!accumulator.hasOwnProperty(bc.id)) accumulator[bc.id] = bc
             })
           return accumulator
         }, {})
 
-      const nodes = Object.values(applications)
+      let nodes = Object.values(applications)
         .reduce((accumulator, application) => {
           const businessCapabilities = application.businessCapabilities.edges
             .map(edge => edge.node.factSheet.id)
@@ -315,7 +310,7 @@ export default {
           const tags = (application.tags || [])
             .filter(tag => allowedTags.length ? allowedTags.indexOf(tag.id) > -1 : true)
 
-          const levels = tags.map(tag => tagHierarchy.indexOf(tag.id))
+          const levels = tags.map(tag => tagHierarchy.indexOf(tag.id) + 1) // leave Level 0 for BC root node
           const nodes = businessCapabilities
             .map(bc => levels.map(level => {
               delete application.businessCapabilities
@@ -335,18 +330,42 @@ export default {
           return Array.from([...accumulator, ...nodes])
         }, [])
 
+      const bcNodes = Object.values(businessCapabilities)
+        .map(bc => {
+          return {
+            ...bc,
+            label: bc.name,
+            group: `bc:${bc.id}`,
+            level: 0,
+            type: 'BusinessCapability'
+          }
+        })
+
+      nodes = Array.from([...nodes, ...bcNodes])
+
       const nodeIDs = nodes.map(node => node.id)
 
       const edges = nodes
         .reduce((accumulator, node, idx, nodes) => {
+          let rootNodeToApps = []
+          if (node.type === 'BusinessCapability') {
+            rootNodeToApps = Object.values(nodes
+              .filter(_node => _node.group === node.id && _node.id !== node.id)
+              .reduce((accumulator, node) => {
+                if (!accumulator[node.factSheetId] || accumulator[node.factSheetId].level > node.level) accumulator[node.factSheetId] = node
+                return accumulator
+              }, {}))
+              .map(node => { return { from: node.group, to: node.id, arrow: 'to', color: { opacity: 0.3, dashes: true } } })
+          }
           const successorTags = nodes
             .filter(_node => _node.group === node.group && _node.factSheetId === node.factSheetId && _node.level === node.level + 1)
             .map(_node => { return { from: node.id, to: _node.id, arrow: 'to' } })
-          const successorRelations = node.successors
+
+          const successorRelations = (node.successors || [])
             .filter(successorFactSheetId => nodeIDs.indexOf(`${node.group}:${successorFactSheetId}:${node.level + 1}`))
             .map(successorFactSheetId => { return { from: node.id, to: `${node.group}:${successorFactSheetId}:${node.level + 1}` } })
 
-          return Array.from([...accumulator, ...successorTags, ...successorRelations])
+          return Array.from([...accumulator, ...successorTags, ...successorRelations, ...rootNodeToApps])
         }, [])
 
       const groupOptions = [
@@ -356,19 +375,22 @@ export default {
         { background: '#673ab7', color: '#ffffff' }
       ]
 
-      const groups = nodes
+      const appGroups = nodes
+        .filter(node => node.group.split(':')[0] !== 'bc')
         .reduce((accumulator, node) => Array.from([...new Set([...accumulator, node.group])]), [])
         .reduce((accumulator, group, idx) => {
           const _group = groupOptions[idx % groupOptions.length]
+          const groupMetadata = businessCapabilities[group]
 
           accumulator[group] = {
+            ...groupMetadata,
             shape: 'box',
             borderWidth: 1,
             borderWidthSelected: 1,
             color: {
               border: 'black',
               background: _group.background,
-              // highlight: { border: 'black', background: 'green' },
+              highlight: { border: 'black', background: '#78909c' },
               hover: { border: 'black', background: '#78909c' }
             },
             font: { face: 'Helvetica', color: _group.color, size: 13 },
@@ -379,6 +401,33 @@ export default {
           }
           return accumulator
         }, {})
+
+      const bcGroups = nodes
+        .filter(node => node.group.split(':')[0] === 'bc')
+        .reduce((accumulator, node) => Array.from([...new Set([...accumulator, node.group])]), [])
+        .reduce((accumulator, group, idx) => {
+          const _group = groupOptions[idx % groupOptions.length]
+          const groupMetadata = businessCapabilities[group]
+
+          accumulator[group] = {
+            ...groupMetadata,
+            shape: 'box',
+            borderWidth: 1,
+            borderWidthSelected: 1,
+            color: {
+              border: 'black',
+              background: _group.background,
+              highlight: { border: 'black', background: '#78909c' },
+              hover: { border: 'black', background: '#78909c' }
+            },
+            font: { face: 'Helvetica', color: _group.color, size: 18 },
+            shapeProperties: { borderRadius: 4 },
+            labelHighlightBold: false
+          }
+          return accumulator
+        }, {})
+
+      const groups = {...appGroups, ...bcGroups}
       const dataset = { nodes, edges, groups, tagGroup, businessCapabilities }
       return dataset
     },
@@ -397,6 +446,7 @@ export default {
         const config = getReportConfiguration({setup, facetFiltersChangedCallback: this.setFilter})
         this.$lx.ready(config)
       })
+    if (process.env.NODE_ENV) this.refreshNetwork()
     // this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
     /*
     this.network.on('selectNode', params => {
@@ -431,27 +481,22 @@ export default {
     align-items center
 
   .logo
+    $img-width=200px
     position fixed
     top 2em
-    right 70px
-    width 300px
+    left 70px
+    width $img-width
     border-radius 10px
-    z-index 9999
+    // z-index 9999
     background white
     padding 0.5em
     & > img
-      width 300px
+      width $img-width
     @media screen and (max-width: 800px)
       right 60px
       width 150px
       & > img
         width 150px
-
-  .actions-container
-    position absolute
-    top 0
-    left 0
-    noselect
 
   .chart-container
     width calc(100% - 8em)
@@ -462,9 +507,9 @@ export default {
   .actions-container
     position absolute
     top 0
-    left 0
+    right 0
     padding-top 1.5em
-    padding-left 5.5em
+    padding-right 5.5em
     z-index 9999
 
   .hover-container
