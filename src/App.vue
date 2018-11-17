@@ -21,7 +21,7 @@
 <script>
 import { getReportConfiguration } from './helpers/leanixReporting'
 import Fuse from 'fuse.js'
-import { DataSet, Network } from 'vis'
+import { Network } from 'vis'
 import 'vis/dist/vis-network.min.css'
 
 export default {
@@ -94,6 +94,10 @@ export default {
   },
   methods: {
     async refreshNetwork (spin) {
+      if (!this.filter.facetFilters) {
+        this.filter = { facetFilters: [{ facetKey: 'FactSheetTypes', keys: [ 'Application' ] }] }
+      }
+
       spin ? this.loading = true : this.$lx.showSpinner()
       const { nodes, edges, groups, tagGroup, businessCapabilities } = await this.loadDatasetFromWorkspace()
       spin ? this.loading = false : this.$lx.hideSpinner()
@@ -105,21 +109,11 @@ export default {
 
       this.tagGroup = tagGroup
       this.options.groups = groups
-      this.$options.nodes = new DataSet(nodes)
-      this.$options.edges = new DataSet(edges)
+      this.$options.nodes = nodes
+      this.$options.edges = edges
 
       this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
       // this.clusterAllByBusinessCapability()
-
-      this.$options.network.on('click', properties => {
-        const { nodes } = properties
-        const id = nodes.shift()
-        if (this.$options.network.isCluster(id)) {
-          this.$options.network.openCluster(id)
-        } else {
-          this.clusterByBusinessCapability(id)
-        }
-      })
 
       /*
       this.$options.network.on('hoverNode', params => {
@@ -136,22 +130,7 @@ export default {
       })
       */
 
-      // this.$options.network.on('beforeDrawing', this.drawOverlay)
-    },
-    clusterByBusinessCapability (nodeID) {
-      const isCluster = this.$options.network.isCluster(nodeID)
-      console.log('isCluster', isCluster, 'network', this.$options.network)
-    },
-    clusterAllByBusinessCapability () {
-      const groups = this.options.groups
-      Object.keys(groups)
-        .forEach(group => {
-          const clusterNodeProperties = { ...groups[group], level: 0 }
-          this.$options.network.cluster({
-            joinCondition: item => item.group === group,
-            clusterNodeProperties
-          })
-        })
+      this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
     drawOverlay (ctx) {
       const legendColor = '#616161' // grey-700
@@ -168,6 +147,7 @@ export default {
         }, {})
 
       const bboxes = Object.entries(nodes)
+        .filter(([bc, ids]) => bc.split(':')[0] !== 'bc')
         .reduce((accumulator, [bc, ids]) => {
           const positions = this.$options.network.getPositions(ids)
           const bbox = Object.values(positions)
@@ -209,7 +189,7 @@ export default {
       let endX
       labels.forEach((label, idx, labels) => {
         ctx.fillStyle = legendColor
-        const x = (-1.5 + idx) * levelSeparation
+        const x = (idx - 1) * levelSeparation
         ctx.moveTo(x, bbox[1])
         const height = bbox[1] + bbox[3]
         ctx.lineTo(x, height)
@@ -232,17 +212,6 @@ export default {
 
       Object.entries(bboxes)
         .forEach(([BC, bbox], idx) => {
-          // Draw legend for business capability
-          ctx.font = '22px Helvetica'
-          ctx.fillStyle = legendColor
-
-          const label = this.businessCapabilities.hasOwnProperty(BC) ? this.businessCapabilities[BC].name : BC
-
-          let x = bbox[0] - levelSeparation / 2 - ctx.measureText(label).width - 20
-          let y = (bbox[1] + bbox[3]) / 2 // Center position for BC Row
-
-          ctx.fillText(label, x, y)
-
           // Add horizontal separators between business capabilities
           ctx.strokeStyle = gridColor
           const bottomY = bbox[3] + nodeSpacing / 2
@@ -257,7 +226,7 @@ export default {
             const paddingX = 10
             const paddingY = 10
             ctx.font = 'bold 12px Helvetica'
-            const x = (idx - 1.5) * levelSeparation - ctx.measureText(label).width - paddingX
+            const x = (idx - 1) * levelSeparation - ctx.measureText(label).width - paddingX
             const y = bottomY - paddingY
             ctx.fillText(label, x, y)
           })
@@ -453,8 +422,6 @@ export default {
             },
             font: { face: 'Helvetica', color: _group.color, size: 18 },
             shapeProperties: { borderRadius: 4 },
-            widthConstraint: 170,
-            heightConstraint: 60,
             labelHighlightBold: false
           }
           return accumulator
@@ -479,6 +446,7 @@ export default {
         const config = getReportConfiguration({setup, facetFiltersChangedCallback: this.setFilter})
         this.$lx.ready(config)
       })
+    if (process.env.NODE_ENV) this.refreshNetwork()
     // this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
     /*
     this.network.on('selectNode', params => {
