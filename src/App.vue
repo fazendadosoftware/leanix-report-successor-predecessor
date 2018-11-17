@@ -442,8 +442,7 @@ export default {
 
           accumulator[group] = {
             ...groupMetadata,
-            shape: 'ellipsis',
-            size: 40,
+            shape: 'box',
             borderWidth: 1,
             borderWidthSelected: 1,
             color: {
@@ -454,8 +453,8 @@ export default {
             },
             font: { face: 'Helvetica', color: _group.color, size: 18 },
             shapeProperties: { borderRadius: 4 },
-            widthConstraint: { minimum: 150, maximum: 150 },
-            heightConstraint: { minimum: 40 },
+            widthConstraint: 170,
+            heightConstraint: 60,
             labelHighlightBold: false
           }
           return accumulator
