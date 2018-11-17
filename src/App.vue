@@ -132,8 +132,8 @@ export default {
 
       this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
-    drawOverlay (ctx) {
-      const legendColor = '#616161' // grey-700
+    drawOverlay (ctx) { /* eslint-disable */
+      // const legendColor = '#616161' // grey-700
       const gridColor = '#e0e0e0' // grey-200
       const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
 
@@ -147,7 +147,7 @@ export default {
         }, {})
 
       const bboxes = Object.entries(nodes)
-        .filter(([bc, ids]) => bc.split(':')[0] !== 'bc')
+        // .filter(([bc, ids]) => bc.split(':')[0] !== 'bc')
         .reduce((accumulator, [bc, ids]) => {
           const positions = this.$options.network.getPositions(ids)
           const bbox = Object.values(positions)
@@ -182,19 +182,21 @@ export default {
 
       const [originX, originY, width, height] = bbox
       // bbox = [originX - levelSeparation / 2, originY - nodeSpacing, width + levelSeparation, height + nodeSpacing * 2] // Add padding to the outer container
-      bbox = [originX - levelSeparation / 2, originY - nodeSpacing / 2, width + levelSeparation, height + nodeSpacing]
+      bbox = [originX + levelSeparation / 2, originY - nodeSpacing / 2, width + levelSeparation, height + nodeSpacing]
 
       // Add vertical separator for phases
       let _width
       let endX
+
       labels.forEach((label, idx, labels) => {
-        ctx.fillStyle = legendColor
-        const x = (idx - 1) * levelSeparation
-        ctx.moveTo(x, bbox[1])
-        const height = bbox[1] + bbox[3]
-        ctx.lineTo(x, height)
-        ctx.strokeStyle = gridColor
-        ctx.stroke()
+        const x = bbox[0] + (idx + 1) * levelSeparation
+        if (idx < labels.length - 1) {
+          ctx.moveTo(x, bbox[1])
+          const height = bbox[1] + bbox[3]
+          ctx.lineTo(x, height)
+          ctx.strokeStyle = gridColor
+          ctx.stroke()
+        }
         if (idx === 0) _width = x
         else if (idx === labels.length - 1) {
           _width = x - _width + levelSeparation
@@ -208,25 +210,27 @@ export default {
 
       // Draw the outer container
       ctx.strokeStyle = gridColor
+      // ctx.lineWidth = 10
       ctx.strokeRect(...bbox)
 
       Object.entries(bboxes)
-        .forEach(([BC, bbox], idx) => {
-          // Add horizontal separators between business capabilities
-          ctx.strokeStyle = gridColor
+        .filter(([bc, bbox]) => bc.split(':')[0] !== 'bc')
+        .forEach(([BC, bbox], idx, bboxes) => {
+          // Add horizontal separators between business capabilities7
           const bottomY = bbox[3] + nodeSpacing / 2
-          const startX = bbox[0] - levelSeparation / 2
-          // const endX = bbox[2] + levelSeparation / 2
-          ctx.moveTo(startX, bottomY)
-          ctx.lineTo(endX, bottomY)
-          ctx.stroke()
-
+          const startX = this.bbox[0]
+          if (idx < bboxes.length - 1) {
+            ctx.strokeStyle =  gridColor
+            ctx.moveTo(startX, bottomY)
+            ctx.lineTo(endX, bottomY)
+            ctx.stroke()
+          }
           // Add phases to the bottom
           labels.forEach((label, idx, labels) => {
             const paddingX = 10
             const paddingY = 10
             ctx.font = 'bold 12px Helvetica'
-            const x = (idx - 1) * levelSeparation - ctx.measureText(label).width - paddingX
+            const x = this.bbox[0] + (idx + 1) * levelSeparation - ctx.measureText(label).width - paddingX
             const y = bottomY - paddingY
             ctx.fillText(label, x, y)
           })
@@ -236,14 +240,10 @@ export default {
       const tagGroupSeachTerm = 'transition phase'
 
       const fetchTagGroupQuery = `
-        fragment Tag on Tag {id name color status}
-
-        fragment TagGroup on TagGroup {
+        {op:allTagGroups{edges{node{
           id name shortName description mode mandatory restrictToFactSheetTypes
-          tags{asList{...Tag}}
-        }
-
-        {op:allTagGroups{edges{node{...TagGroup}}}}
+          tags{asList{id name color status}}
+        }}}}
       `
 
       const sortByName = (a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0
