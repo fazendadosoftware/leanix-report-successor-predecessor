@@ -269,10 +269,10 @@ export default {
           {
             edges{
               node{
-                id name tags {id name color}
+                id type name tags {id name color}
                 ...on Application{
                   successors:relToSuccessor{edges{node{factSheet{id}}}}
-                  businessCapabilities:relApplicationToBusinessCapability{edges{node{factSheet{id name}}}}
+                  businessCapabilities:relApplicationToBusinessCapability{edges{node{factSheet{id type name}}}}
                 }
             }
           }
@@ -331,6 +331,7 @@ export default {
         }, [])
 
       const bcNodes = Object.values(businessCapabilities)
+        .filter(bc => allowedBusinessCapabilities.length ? allowedBusinessCapabilities.indexOf(bc.id) > -1 : true)
         .map(bc => {
           return {
             ...bc,
@@ -340,6 +341,8 @@ export default {
             type: 'BusinessCapability'
           }
         })
+
+      console.log('bc nodes', bcNodes)
 
       nodes = Array.from([...nodes, ...bcNodes])
 
