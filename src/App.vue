@@ -342,8 +342,6 @@ export default {
           }
         })
 
-      console.log('bc nodes', bcNodes)
-
       nodes = Array.from([...nodes, ...bcNodes])
 
       const nodeIDs = nodes.map(node => node.id)
