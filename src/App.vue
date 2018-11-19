@@ -355,17 +355,21 @@ export default {
                 if (!accumulator[node.factSheetId] || accumulator[node.factSheetId].level > node.level) accumulator[node.factSheetId] = node
                 return accumulator
               }, {}))
-              .map(node => { return { from: node.group, to: node.id, arrow: 'to', color: { opacity: 0.3, dashes: true } } })
+              .map(node => { return { from: node.group, to: node.id, arrow: 'to', dashes: true, color: { opacity: 0.3, dashes: true } } })
           }
-          const successorTags = nodes
-            .filter(_node => _node.group === node.group && _node.factSheetId === node.factSheetId && _node.level === node.level + 1)
+          const successorByTag = nodes
+            // .filter(_node => _node.group === node.group && _node.factSheetId === node.factSheetId && _node.level === node.level + 1)
+            .filter(_node => _node.type !== 'BusinessCapability' && _node.group === node.group && _node.factSheetId === node.factSheetId && _node.level > node.level)
+            .sort((a, b) => a.level - b.level) // sort nodes by level - ascending
             .map(_node => { return { from: node.id, to: _node.id, arrow: 'to' } })
+            .shift()
 
           const successorRelations = (node.successors || [])
             .filter(successorFactSheetId => nodeIDs.indexOf(`${node.group}:${successorFactSheetId}:${node.level + 1}`))
             .map(successorFactSheetId => { return { from: node.id, to: `${node.group}:${successorFactSheetId}:${node.level + 1}` } })
-
-          return Array.from([...accumulator, ...successorTags, ...successorRelations, ...rootNodeToApps])
+          accumulator = Array.from([...accumulator, ...successorRelations, ...rootNodeToApps])
+          if (successorByTag) accumulator.push(successorByTag)
+          return accumulator
         }, [])
 
       const groupOptions = [
