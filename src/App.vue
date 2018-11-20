@@ -303,7 +303,7 @@ export default {
           {
             edges{
               node{
-                id type name tags {id name color}
+                id type name tags {id name color tagGroup{id}}
                 ...on Application{
                   successors:relToSuccessor{edges{node{factSheet{id}}}}
                   businessCapabilities:relApplicationToBusinessCapability{edges{node{factSheet{id type name}}}}
@@ -313,7 +313,19 @@ export default {
         }
       }`
       const applications = await this.$lx.executeGraphQL(fetchApplicationsQuery, { filter: this.filter })
-        .then(res => res.op.edges.map(edge => edge.node).reduce((accumulator, application) => { return { ...accumulator, [application.id]: application } }, {}))
+        .then(res => res.op.edges
+          .map(edge => edge.node)
+          .filter(application => { // filter for applications that contain at least a tag from tagGroup
+
+            const tagGroups = application.tags
+              .filter(tag => tag.tagGroup)
+              .map(tag => tag.tagGroup.id)
+              .reduce((accumulator, tagGroupID) => Array.from([...new Set([...accumulator, tagGroupID])]), [])
+            const hasTagFromTagGroup = tagGroups.indexOf(tagGroup.id) > -1
+
+            return hasTagFromTagGroup
+          })
+          .reduce((accumulator, application) => { return { ...accumulator, [application.id]: application } }, {}))
 
       const allowedBusinessCapabilities = this.filter.facetFilters
         .filter(facet => facet.facetKey === 'relApplicationToBusinessCapability')
@@ -323,7 +335,6 @@ export default {
         .filter(facet => facet.facetKey === tagGroup.name)
         .reduce((accumulator, facet) => Array.from(new Set([...accumulator, ...facet.keys])), [])
 
-      
       const businessCapabilities = Object.values(applications)
         .reduce((accumulator, application) => {
           application.businessCapabilities.edges
@@ -346,7 +357,10 @@ export default {
           const tags = (application.tags || [])
             .filter(tag => allowedTags.length ? allowedTags.indexOf(tag.id) > -1 : true)
 
-          const levels = tags.map(tag => tagHierarchy.indexOf(tag.id) + 1) // leave Level 0 for BC root node
+          const levels = tags
+            .filter(tag => tagHierarchy.indexOf(tag.id) > -1)
+            .map(tag => tagHierarchy.indexOf(tag.id) + 1) // leave Level 0 for BC root node
+
           const nodes = businessCapabilities
             .map(bc => levels.map(level => {
               delete application.businessCapabilities
@@ -361,25 +375,29 @@ export default {
                 factSheetId: application.id
               }
             }))
-            .reduce((accumulator, node) => Array.from([...accumulator, ...node]))
+            .reduce((accumulator, nodes) => {
+              nodes.forEach(node => accumulator[node.id] = node)
+              return accumulator
+            }, {})
 
-          return Array.from([...accumulator, ...nodes])
-        }, [])
+          return { ...accumulator, ...nodes }
+        }, {})
 
       const bcNodes = Object.values(businessCapabilities)
-        .filter(bc => bc.id === bcIndex[bc.id].id)
+        .map(bc => bcIndex[bc.id])
         .filter(bc => allowedBusinessCapabilities.length ? allowedBusinessCapabilities.indexOf(bc.id) > -1 : true)
-        .map(bc => {
-          return {
+        .reduce((accumulator, bc) => {
+          bc = {
             ...bc,
             label: bc.name,
             group: `bc:${bc.id}`,
             level: 0,
             type: 'BusinessCapability'
           }
-        })
+          return { ...accumulator, [bc.id]: bc }
+        }, {})
 
-      nodes = Array.from([...nodes, ...bcNodes])
+      nodes = Array.from([...Object.values(nodes), ...Object.values(bcNodes)])
 
       const nodeIDs = nodes.map(node => node.id)
 
