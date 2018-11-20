@@ -236,7 +236,36 @@ export default {
           })
         })
     },
+    async loadBusinessCapabilityIndex () {
+      const query = `{
+        op:allFactSheets(factSheetType:BusinessCapability){
+          edges{node{id type name level ...on BusinessCapability{parent:relToParent{edges{node{factSheet{id}}}}}}}
+        }
+      }`
+      let bcIndex = await this.$lx.executeGraphQL(query)
+        .then(res => res.op.edges
+          .map(edge => edge.node)
+          .reduce((accumulator, node) => { return { ...accumulator, [node.id]: node } }, {}))
+
+      const getBCRootParent = (bc, bcIndex) => bc.level === 1 ? bcIndex[bc.id] : getBCRootParent({ id: bc.parent, level: bc.level - 1 }, bcIndex)
+
+      const childIndex = Object.values(bcIndex)
+        .filter(bc => bc.level > 1)
+        .map(bc => {
+          let { parent } = bc
+          parent = (parent.edges.map(edge => edge.node.factSheet).shift() || {}).id
+          return { ...bc, parent }
+        })
+        .map(bc => { return { ...bc, parent: getBCRootParent(bc, bcIndex) } })
+        .reduce((accumulator, bc) => {
+          return { ...accumulator, [bc.id]: bc.parent }
+        }, {})
+
+      return { ...bcIndex, ...childIndex }
+    },
     async loadDatasetFromWorkspace () {
+      const bcIndex = await this.loadBusinessCapabilityIndex()
+
       const tagGroupSeachTerm = 'transition phase'
 
       const fetchTagGroupQuery = `
@@ -289,6 +318,7 @@ export default {
         .filter(facet => facet.facetKey === tagGroup.name)
         .reduce((accumulator, facet) => Array.from(new Set([...accumulator, ...facet.keys])), [])
 
+      
       const businessCapabilities = Object.values(applications)
         .reduce((accumulator, application) => {
           application.businessCapabilities.edges
@@ -298,6 +328,8 @@ export default {
             })
           return accumulator
         }, {})
+
+      console.log('businessCapabilities', businessCapabilities, bcIndex)
 
       let nodes = Object.values(applications)
         .reduce((accumulator, application) => {
