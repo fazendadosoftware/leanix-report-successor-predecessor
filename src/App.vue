@@ -247,7 +247,10 @@ export default {
           .map(edge => edge.node)
           .reduce((accumulator, node) => { return { ...accumulator, [node.id]: node } }, {}))
 
-      const getBCRootParent = (bc, bcIndex) => bc.level === 1 ? bcIndex[bc.id] : getBCRootParent({ id: bc.parent, level: bc.level - 1 }, bcIndex)
+      const getBCRootParent = (bc, bcIndex) => {
+        const parent = typeof bc.parent === 'string' ? bc.parent : bc.parent.edges.map(edge => edge.node.factSheet.id).shift()
+        return parent ? getBCRootParent(bcIndex[parent], bcIndex) : bc
+      }
 
       const childIndex = Object.values(bcIndex)
         .filter(bc => bc.level > 1)
@@ -329,12 +332,12 @@ export default {
           return accumulator
         }, {})
 
-      console.log('businessCapabilities', businessCapabilities, bcIndex)
-
+      console.log(bcIndex)
       let nodes = Object.values(applications)
         .reduce((accumulator, application) => {
           const businessCapabilities = application.businessCapabilities.edges
             .map(edge => edge.node.factSheet.id)
+            .map(bcId => bcIndex[bcId].id)
             .filter(bcId => allowedBusinessCapabilities.length ? allowedBusinessCapabilities.indexOf(bcId) > -1 : true)
 
           const successors = application.successors.edges.map(edge => edge.node.factSheet.id)
@@ -363,6 +366,7 @@ export default {
         }, [])
 
       const bcNodes = Object.values(businessCapabilities)
+        .filter(bc => bc.id === bcIndex[bc.id].id)
         .filter(bc => allowedBusinessCapabilities.length ? allowedBusinessCapabilities.indexOf(bc.id) > -1 : true)
         .map(bc => {
           return {
