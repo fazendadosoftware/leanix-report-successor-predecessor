@@ -19,6 +19,7 @@
 </template>
 
 <script>
+import Color from 'color'
 import { getReportConfiguration } from './helpers/leanixReporting'
 import Fuse from 'fuse.js'
 import { Network } from 'vis'
@@ -72,7 +73,7 @@ export default {
             // highlight: { border: 'black', background: 'green' },
             hover: { border: 'black', background: 'white' }
           },
-          font: { face: 'Helvetica', color: 'black', size: 13 },
+          font: { face: 'Helvetica, sans-serif', color: 'black', size: 13 },
           shapeProperties: { borderRadius: 4 },
           widthConstraint: { minimum: 150, maximum: 150 },
           heightConstraint: { minimum: 40 },
@@ -133,7 +134,7 @@ export default {
       this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
     drawOverlay (ctx) { /* eslint-disable */
-      // const legendColor = '#616161' // grey-700
+      const legendColor = '#616161' // grey-700
       const gridColor = '#e0e0e0' // grey-200
       const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
 
@@ -229,14 +230,47 @@ export default {
           labels.forEach((label, idx, labels) => {
             const paddingX = 10
             const paddingY = 10
-            ctx.font = 'bold 12px Helvetica'
+            ctx.font = 'bold 12px Helvetica, sans-serif'
             const x = this.bbox[0] + (idx + 1) * levelSeparation - ctx.measureText(label).width - paddingX
             const y = bottomY - paddingY
+            ctx.fillStyle = legendColor
             ctx.fillText(label, x, y)
           })
         })
     },
+    async loadBusinessCapabilityIndex () {
+      const query = `{
+        op:allFactSheets(factSheetType:BusinessCapability){
+          edges{node{id type name level ...on BusinessCapability{parent:relToParent{edges{node{factSheet{id}}}}}}}
+        }
+      }`
+      let bcIndex = await this.$lx.executeGraphQL(query)
+        .then(res => res.op.edges
+          .map(edge => edge.node)
+          .reduce((accumulator, node) => { return { ...accumulator, [node.id]: node } }, {}))
+
+      const getBCRootParent = (bc, bcIndex) => {
+        const parent = typeof bc.parent === 'string' ? bc.parent : bc.parent.edges.map(edge => edge.node.factSheet.id).shift()
+        return parent ? getBCRootParent(bcIndex[parent], bcIndex) : bc
+      }
+
+      const childIndex = Object.values(bcIndex)
+        .filter(bc => bc.level > 1)
+        .map(bc => {
+          let { parent } = bc
+          parent = (parent.edges.map(edge => edge.node.factSheet).shift() || {}).id
+          return { ...bc, parent }
+        })
+        .map(bc => { return { ...bc, parent: getBCRootParent(bc, bcIndex) } })
+        .reduce((accumulator, bc) => {
+          return { ...accumulator, [bc.id]: bc.parent }
+        }, {})
+
+      return { ...bcIndex, ...childIndex }
+    },
     async loadDatasetFromWorkspace () {
+      const bcIndex = await this.loadBusinessCapabilityIndex()
+
       const tagGroupSeachTerm = 'transition phase'
 
       const fetchTagGroupQuery = `
@@ -289,6 +323,7 @@ export default {
         .filter(facet => facet.facetKey === tagGroup.name)
         .reduce((accumulator, facet) => Array.from(new Set([...accumulator, ...facet.keys])), [])
 
+      
       const businessCapabilities = Object.values(applications)
         .reduce((accumulator, application) => {
           application.businessCapabilities.edges
@@ -303,6 +338,7 @@ export default {
         .reduce((accumulator, application) => {
           const businessCapabilities = application.businessCapabilities.edges
             .map(edge => edge.node.factSheet.id)
+            .map(bcId => bcIndex[bcId].id)
             .filter(bcId => allowedBusinessCapabilities.length ? allowedBusinessCapabilities.indexOf(bcId) > -1 : true)
 
           const successors = application.successors.edges.map(edge => edge.node.factSheet.id)
@@ -331,6 +367,7 @@ export default {
         }, [])
 
       const bcNodes = Object.values(businessCapabilities)
+        .filter(bc => bc.id === bcIndex[bc.id].id)
         .filter(bc => allowedBusinessCapabilities.length ? allowedBusinessCapabilities.indexOf(bc.id) > -1 : true)
         .map(bc => {
           return {
@@ -398,9 +435,9 @@ export default {
               highlight: { border: 'black', background: '#78909c' },
               hover: { border: 'black', background: '#78909c' }
             },
-            font: { face: 'Helvetica', color: _group.color, size: 13 },
+            font: { face: 'Helvetica, sans-serif', color: _group.color, size: 13 },
             shapeProperties: { borderRadius: 4 },
-            widthConstraint: { minimum: 150, maximum: 150 },
+            widthConstraint: 150,
             heightConstraint: { minimum: 40 },
             labelHighlightBold: false
           }
@@ -421,13 +458,15 @@ export default {
             borderWidthSelected: 1,
             color: {
               border: 'black',
-              background: _group.background,
+              background: Color(_group.background).alpha(0.9).string(),
               highlight: { border: 'black', background: '#78909c' },
               hover: { border: 'black', background: '#78909c' }
             },
-            font: { face: 'Helvetica', color: _group.color, size: 18 },
+            font: { face: 'Helvetica, sans-serif', color: _group.color, size: 18 },
             shapeProperties: { borderRadius: 4 },
-            labelHighlightBold: false
+            labelHighlightBold: false,
+            widthConstraint: 200,
+            heightConstraint: { minimum: 80 },
           }
           return accumulator
         }, {})
