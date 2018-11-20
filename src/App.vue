@@ -72,7 +72,7 @@ export default {
             // highlight: { border: 'black', background: 'green' },
             hover: { border: 'black', background: 'white' }
           },
-          font: { face: 'Helvetica', color: 'black', size: 13 },
+          font: { face: 'Helvetica, sans-serif', color: 'black', size: 13 },
           shapeProperties: { borderRadius: 4 },
           widthConstraint: { minimum: 150, maximum: 150 },
           heightConstraint: { minimum: 40 },
@@ -133,7 +133,7 @@ export default {
       this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
     drawOverlay (ctx) { /* eslint-disable */
-      // const legendColor = '#616161' // grey-700
+      const legendColor = '#616161' // grey-700
       const gridColor = '#e0e0e0' // grey-200
       const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
 
@@ -229,9 +229,10 @@ export default {
           labels.forEach((label, idx, labels) => {
             const paddingX = 10
             const paddingY = 10
-            ctx.font = 'bold 12px Helvetica'
+            ctx.font = 'bold 12px Helvetica, sans-serif'
             const x = this.bbox[0] + (idx + 1) * levelSeparation - ctx.measureText(label).width - paddingX
             const y = bottomY - paddingY
+            ctx.fillStyle = legendColor
             ctx.fillText(label, x, y)
           })
         })
@@ -434,7 +435,7 @@ export default {
               highlight: { border: 'black', background: '#78909c' },
               hover: { border: 'black', background: '#78909c' }
             },
-            font: { face: 'Helvetica', color: _group.color, size: 13 },
+            font: { face: 'Helvetica, sans-serif', color: _group.color, size: 13 },
             shapeProperties: { borderRadius: 4 },
             widthConstraint: { minimum: 150, maximum: 150 },
             heightConstraint: { minimum: 40 },
@@ -461,7 +462,7 @@ export default {
               highlight: { border: 'black', background: '#78909c' },
               hover: { border: 'black', background: '#78909c' }
             },
-            font: { face: 'Helvetica', color: _group.color, size: 18 },
+            font: { face: 'Helvetica, sans-serif', color: _group.color, size: 18 },
             shapeProperties: { borderRadius: 4 },
             labelHighlightBold: false
           }
