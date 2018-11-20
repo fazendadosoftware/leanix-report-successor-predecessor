@@ -22,3 +22,19 @@ npm run upload
 ```
 
 For a detailed explanation on how things work, check out the [guide](http://vuejs-templates.github.io/webpack/) and [docs for vue-loader](http://vuejs.github.io/vue-loader).
+
+## Report Configuration
+This report can be configured according the specifications defined by its config object. Find below an example for the report standard configuration.
+
+```json
+{
+  "tagGroupName": "transition phase"
+}
+```
+
+Properties
+----------
+
+| Name                        | Type                                | Required | Default value                    | Info                                                                                                   |
+| --------------------------- | ----------------------------------- | -------- | -------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **tagGroupName**           | String                              | No       | "transition phase"                      | The name of the tag group that contains the phase tags                                                             |
