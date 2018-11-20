@@ -15,6 +15,14 @@
       Further information for {{hoveredNode.title || hoveredNode}} shown here...
     </div>
     <div class="chart-container" ref="chart"/>
+    <div class="tag-group-name">{{tagGroupName}}</div>
+    <div v-if="warningMsg" class="warning-container">
+      <span class="header">
+        <font-awesome-icon icon="exclamation-triangle"/>
+        Warning
+      </span>
+      <span>{{warningMsg}}</span>
+    </div>
   </div>
 </template>
 
@@ -34,6 +42,8 @@ export default {
   network: undefined,
   data () {
     return {
+      warningMsg: '',
+      tagGroupName: 'transition phase',
       filter: {},
       bbox: [0, 0, 0, 0], // network bbox [originX, originY, width, height]
       tagGroup: undefined,
@@ -100,20 +110,28 @@ export default {
       }
 
       spin ? this.loading = true : this.$lx.showSpinner()
-      const { nodes, edges, groups, tagGroup, businessCapabilities } = await this.loadDatasetFromWorkspace()
+      try {
+        const { nodes, edges, groups, tagGroup, businessCapabilities } = await this.loadDatasetFromWorkspace()
+        this.warningMsg = ''
+        this.businessCapabilities = businessCapabilities
+
+        if (this.$options.network) this.$options.network.destroy()
+        delete this.$options.network
+
+        this.tagGroup = tagGroup
+        this.options.groups = groups
+        this.$options.nodes = nodes
+        this.$options.edges = edges
+
+        this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
+        this.$options.network.on('beforeDrawing', this.drawOverlay)
+      } catch (err) {
+        this.warningMsg = err.toString()
+        console.error(err)
+      }
+
       spin ? this.loading = false : this.$lx.hideSpinner()
 
-      this.businessCapabilities = businessCapabilities
-
-      if (this.$options.network) this.$options.network.destroy()
-      delete this.$options.network
-
-      this.tagGroup = tagGroup
-      this.options.groups = groups
-      this.$options.nodes = nodes
-      this.$options.edges = edges
-
-      this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
       // this.clusterAllByBusinessCapability()
 
       /*
@@ -130,10 +148,8 @@ export default {
         }, 1000)
       })
       */
-
-      this.$options.network.on('beforeDrawing', this.drawOverlay)
     },
-    drawOverlay (ctx) { /* eslint-disable */
+    drawOverlay (ctx) {
       const legendColor = '#616161' // grey-700
       const gridColor = '#e0e0e0' // grey-200
       const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
@@ -221,7 +237,7 @@ export default {
           const bottomY = bbox[3] + nodeSpacing / 2
           const startX = this.bbox[0]
           if (idx < bboxes.length - 1) {
-            ctx.strokeStyle =  gridColor
+            ctx.strokeStyle = gridColor
             ctx.moveTo(startX, bottomY)
             ctx.lineTo(endX, bottomY)
             ctx.stroke()
@@ -271,7 +287,7 @@ export default {
     async loadDatasetFromWorkspace () {
       const bcIndex = await this.loadBusinessCapabilityIndex()
 
-      const tagGroupSeachTerm = 'transition phase'
+      const tagGroupSearchTerm = this.tagGroupName || 'transition phase'
 
       const fetchTagGroupQuery = `
         {op:allTagGroups{edges{node{
@@ -289,9 +305,9 @@ export default {
             .filter(node => !node.restrictToFactSheetTypes.length || node.restrictToFactSheetTypes.indexOf('Application') > -1)
 
           const fuse = new Fuse(tagGroups, { shouldSort: true, threshold: 0.2, keys: ['name'] })
-          const results = fuse.search(tagGroupSeachTerm)
-          // if (!results.length) { throw Error(`could not find tagGroup "${tagGroupSeachTerm}"`) }
-          if (!results.length) return
+          const results = fuse.search(tagGroupSearchTerm)
+          if (!results.length) { throw Error(`could not find tagGroup "${tagGroupSearchTerm}"`) }
+          // if (!results.length) return
           const tagGroup = results[0]
           tagGroup.tags = tagGroup.tags.asList.sort(sortByName) // sort tags by name
           return tagGroup
@@ -303,7 +319,7 @@ export default {
           {
             edges{
               node{
-                id type name tags {id name color}
+                id type name tags {id name color tagGroup{id}}
                 ...on Application{
                   successors:relToSuccessor{edges{node{factSheet{id}}}}
                   businessCapabilities:relApplicationToBusinessCapability{edges{node{factSheet{id type name}}}}
@@ -313,7 +329,19 @@ export default {
         }
       }`
       const applications = await this.$lx.executeGraphQL(fetchApplicationsQuery, { filter: this.filter })
-        .then(res => res.op.edges.map(edge => edge.node).reduce((accumulator, application) => { return { ...accumulator, [application.id]: application } }, {}))
+        .then(res => res.op.edges
+          .map(edge => edge.node)
+          .filter(application => {
+            // filter for applications that contain at least a tag from tagGroup
+            const tagGroups = application.tags
+              .filter(tag => tag.tagGroup)
+              .map(tag => tag.tagGroup.id)
+              .reduce((accumulator, tagGroupID) => Array.from([...new Set([...accumulator, tagGroupID])]), [])
+            const hasTagFromTagGroup = tagGroups.indexOf(tagGroup.id) > -1
+
+            return hasTagFromTagGroup
+          })
+          .reduce((accumulator, application) => { return { ...accumulator, [application.id]: application } }, {}))
 
       const allowedBusinessCapabilities = this.filter.facetFilters
         .filter(facet => facet.facetKey === 'relApplicationToBusinessCapability')
@@ -323,7 +351,6 @@ export default {
         .filter(facet => facet.facetKey === tagGroup.name)
         .reduce((accumulator, facet) => Array.from(new Set([...accumulator, ...facet.keys])), [])
 
-      
       const businessCapabilities = Object.values(applications)
         .reduce((accumulator, application) => {
           application.businessCapabilities.edges
@@ -346,7 +373,10 @@ export default {
           const tags = (application.tags || [])
             .filter(tag => allowedTags.length ? allowedTags.indexOf(tag.id) > -1 : true)
 
-          const levels = tags.map(tag => tagHierarchy.indexOf(tag.id) + 1) // leave Level 0 for BC root node
+          const levels = tags
+            .filter(tag => tagHierarchy.indexOf(tag.id) > -1)
+            .map(tag => tagHierarchy.indexOf(tag.id) + 1) // leave Level 0 for BC root node
+
           const nodes = businessCapabilities
             .map(bc => levels.map(level => {
               delete application.businessCapabilities
@@ -361,25 +391,29 @@ export default {
                 factSheetId: application.id
               }
             }))
-            .reduce((accumulator, node) => Array.from([...accumulator, ...node]))
+            .reduce((accumulator, nodes) => {
+              nodes.forEach(node => { accumulator[node.id] = node })
+              return accumulator
+            }, {})
 
-          return Array.from([...accumulator, ...nodes])
-        }, [])
+          return { ...accumulator, ...nodes }
+        }, {})
 
       const bcNodes = Object.values(businessCapabilities)
-        .filter(bc => bc.id === bcIndex[bc.id].id)
+        .map(bc => bcIndex[bc.id])
         .filter(bc => allowedBusinessCapabilities.length ? allowedBusinessCapabilities.indexOf(bc.id) > -1 : true)
-        .map(bc => {
-          return {
+        .reduce((accumulator, bc) => {
+          bc = {
             ...bc,
             label: bc.name,
             group: `bc:${bc.id}`,
             level: 0,
             type: 'BusinessCapability'
           }
-        })
+          return { ...accumulator, [bc.id]: bc }
+        }, {})
 
-      nodes = Array.from([...nodes, ...bcNodes])
+      nodes = Array.from([...Object.values(nodes), ...Object.values(bcNodes)])
 
       const nodeIDs = nodes.map(node => node.id)
 
@@ -466,7 +500,7 @@ export default {
             shapeProperties: { borderRadius: 4 },
             labelHighlightBold: false,
             widthConstraint: 200,
-            heightConstraint: { minimum: 80 },
+            heightConstraint: { minimum: 80 }
           }
           return accumulator
         }, {})
@@ -487,29 +521,10 @@ export default {
   async mounted () {
     this.$lx.init()
       .then(setup => {
+        this.tagGroupName = setup.config.tagGroupName || 'transition phase'
         const config = getReportConfiguration({setup, facetFiltersChangedCallback: this.setFilter})
         this.$lx.ready(config)
       })
-    if (process.env.NODE_ENV) this.refreshNetwork()
-    // this.$options.network = new Network(this.$refs.chart, {nodes: this.$options.nodes, edges: this.$options.edges}, this.options)
-    /*
-    this.network.on('selectNode', params => {
-      if (params.nodes.length === 1) {
-        if (this.network.isCluster(params.nodes[0]) === true) {
-          this.network.openCluster(params.nodes[0])
-        } else {
-          this.clusterChildren(params.nodes[0])
-        }
-      }
-    })
-    */
-
-    /*
-    this.$options.network.on('zoom', ({ direction, scale, pointer }) => {
-      if (scale <= this.zoomLimit) this.$options.network.moveTo({ direction, pointer, scale: this.zoomLimit })
-      this.drawOverlay(this.$options.network.canvas.getContext('2d'))
-    })
-    */
   }
 }
 </script>
@@ -604,4 +619,27 @@ export default {
   .btn-group
     > .btn
       margin-right 5px
+
+  .tag-group-name
+    position fixed
+    bottom: 0
+    left 50%
+    transform translateX(-50%)
+    padding 10px
+    font-style italic
+    font-size 9px
+
+  .warning-container
+    position fixed
+    top 50%
+    left 50%
+    transform translate(-50%)
+    display flex
+    flex-flow column
+    align-items center
+    color clr-amber-900
+    font-size 1.5em
+    .header
+      font-size 3em
+      margin-bottom 1em
 </style>
