@@ -19,6 +19,7 @@
 </template>
 
 <script>
+import Color from 'color'
 import { getReportConfiguration } from './helpers/leanixReporting'
 import Fuse from 'fuse.js'
 import { Network } from 'vis'
@@ -333,7 +334,6 @@ export default {
           return accumulator
         }, {})
 
-      console.log(bcIndex)
       let nodes = Object.values(applications)
         .reduce((accumulator, application) => {
           const businessCapabilities = application.businessCapabilities.edges
@@ -437,7 +437,7 @@ export default {
             },
             font: { face: 'Helvetica, sans-serif', color: _group.color, size: 13 },
             shapeProperties: { borderRadius: 4 },
-            widthConstraint: { minimum: 150, maximum: 150 },
+            widthConstraint: 150,
             heightConstraint: { minimum: 40 },
             labelHighlightBold: false
           }
@@ -458,13 +458,15 @@ export default {
             borderWidthSelected: 1,
             color: {
               border: 'black',
-              background: _group.background,
+              background: Color(_group.background).alpha(0.9).string(),
               highlight: { border: 'black', background: '#78909c' },
               hover: { border: 'black', background: '#78909c' }
             },
             font: { face: 'Helvetica, sans-serif', color: _group.color, size: 18 },
             shapeProperties: { borderRadius: 4 },
-            labelHighlightBold: false
+            labelHighlightBold: false,
+            widthConstraint: 200,
+            heightConstraint: { minimum: 80 },
           }
           return accumulator
         }, {})
