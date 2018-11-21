@@ -150,8 +150,8 @@ export default {
       */
     },
     drawOverlay (ctx) {
-      const legendColor = '#616161' // grey-700
-      const gridColor = '#e0e0e0' // grey-200
+      const legendColor = '#757575' // grey-600
+      const gridColor = '#f5f5f5' // grey-100
       const labels = this.tags.map(tag => tag.name) // Tag labels to be rendered inside each box...
 
       const { levelSeparation, nodeSpacing } = this.options.layout.hierarchical
@@ -429,6 +429,7 @@ export default {
               }, {}))
               .map(node => { return { from: node.group, to: node.id, arrow: 'to', dashes: true, color: { opacity: 0.3, dashes: true } } })
           }
+
           const successorByTag = nodes
             // .filter(_node => _node.group === node.group && _node.factSheetId === node.factSheetId && _node.level === node.level + 1)
             .filter(_node => _node.type !== 'BusinessCapability' && _node.group === node.group && _node.factSheetId === node.factSheetId && _node.level > node.level)
@@ -436,9 +437,19 @@ export default {
             .map(_node => { return { from: node.id, to: _node.id, arrow: 'to' } })
             .shift()
 
-          const successorRelations = (node.successors || [])
-            .filter(successorFactSheetId => nodeIDs.indexOf(`${node.group}:${successorFactSheetId}:${node.level + 1}`))
-            .map(successorFactSheetId => { return { from: node.id, to: `${node.group}:${successorFactSheetId}:${node.level + 1}` } })
+          let successorRelations = []
+          // if node is the last from tag hierarchy, establish a relation with the successor application
+          let isLast = (nodes
+            .filter(_node => _node.type !== 'BusinessCapability' && _node.group === node.group && _node.factSheetId === node.factSheetId)
+            .sort((a, b) => b.level - a.level)
+            .shift() || {}).level === node.level
+
+          if (isLast) {
+            successorRelations = (node.successors || [])
+              .filter(successorFactSheetId => nodeIDs.indexOf(`${node.group}:${successorFactSheetId}:${node.level + 1}`))
+              .map(successorFactSheetId => { return { from: node.id, to: `${node.group}:${successorFactSheetId}:${node.level + 1}` } })
+          }
+
           accumulator = Array.from([...accumulator, ...successorRelations, ...rootNodeToApps])
           if (successorByTag) accumulator.push(successorByTag)
           return accumulator
@@ -524,6 +535,7 @@ export default {
         this.tagGroupName = setup.config.tagGroupName || 'transition phase'
         const config = getReportConfiguration({setup, facetFiltersChangedCallback: this.setFilter})
         this.$lx.ready(config)
+        if (process.env.NODE_ENV === 'development') this.refreshNetwork()
       })
   }
 }
